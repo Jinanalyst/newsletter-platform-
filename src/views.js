@@ -78,6 +78,8 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .grid a.card:hover{border-color:var(--blue);box-shadow:0 18px 36px -24px color-mix(in srgb,var(--blue) 60%,transparent)}
 .item{border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:0 0 12px;background:var(--card);transition:border-color .15s}
 .item:hover{border-color:var(--blue)}
+.dropzone{display:block;border:1.5px dashed var(--line);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;color:var(--mute);margin:0 0 6px;transition:border-color .15s,background .15s}
+.dropzone:hover,.dropzone.on{border-color:var(--blue);background:var(--blue-soft)}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 14px;font-size:13px;text-decoration:none;transition:border-color .15s}
 .chip:hover{border-color:var(--blue)}

@@ -10,6 +10,7 @@ import { requireUser } from './auth.js';
 import { seedNewsletter } from './seed.js';
 import { page, fmt, pct } from './views.js';
 import { snsFields, parseSns } from './sns.js';
+import { parseSubscribers } from './csv.js';
 import { viewStats, postViewStats } from './analytics.js';
 
 export const dash = Router();
@@ -199,8 +200,19 @@ ${rows.length > 500 ? '<p class="mute">상위 500명만 표시됩니다. 검색�
 <div class="editor"><form class="card" method="post" action="/app/n/${nl.id}/subscribers/add"><h2 style="margin-top:0">직접 추가</h2>
 <label>이메일</label><input type="email" name="email" required><label>이름</label><input name="name"><p><button class="primary">추가</button></p></form>
 <form class="card" method="post" action="/app/n/${nl.id}/subscribers/import"><h2 style="margin-top:0">CSV 가져오기</h2>
-<label>한 줄에 하나: 이메일,이름</label><textarea name="csv" rows="5" placeholder="a@example.com,홍길동"></textarea>
-<p class="mute">구독 동의를 받은 사람만 가져오세요. 바로 활성 상태가 됩니다.</p><p><button class="primary">가져오기</button></p></form></div>`,
+<label id="csvdrop" class="dropzone">CSV·텍스트 파일을 여기에 끌어다 놓거나 <u>파일 선택</u><input type="file" id="csvfile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
+<label>또는 엑셀·구글 시트에서 복사해 붙여넣기 (한 줄에 한 명)</label><textarea name="csv" id="csvtext" rows="5" placeholder="a@example.com,홍길동"></textarea>
+<p class="mute" id="csvsum">이메일 열은 자동으로 찾고, 머리글 줄(이메일, 이름)과 쉼표·탭·세미콜론 구분을 모두 인식합니다. <a href="data:text/csv;charset=utf-8,%EF%BB%BFemail,name%0Aa@example.com,%ED%99%8D%EA%B8%B8%EB%8F%99" download="subscribers-sample.csv">샘플 파일</a></p>
+<p class="mute">구독 동의를 받은 사람만 가져오세요. 바로 활성 상태가 됩니다.</p><p><button class="primary" id="csvgo">가져오기</button></p></form></div>
+<script>(function(){var t=document.getElementById('csvtext'),s=document.getElementById('csvsum'),d=document.getElementById('csvdrop'),f=document.getElementById('csvfile'),base=s.innerHTML;
+function sum(){var m=t.value.match(/[^\\s@,;"]+@[^\\s@,;"]+\\.[^\\s@,;"]+/g);s.innerHTML=m?'이메일 <b>'+new Set(m.map(function(x){return x.toLowerCase()})).size+'</b>개를 찾았습니다. 아래 버튼을 누르면 가져옵니다.':base}
+function load(file){if(!file)return;if(file.size>1.5e6){alert('1.5MB 이하 파일만 가능합니다. 나눠서 올려 주세요.');return}
+var r=new FileReader();r.onload=function(){t.value=r.result;sum()};r.readAsText(file)}
+f.onchange=function(){load(f.files[0])};t.oninput=sum;
+['dragenter','dragover'].forEach(function(e){d.addEventListener(e,function(x){x.preventDefault();d.classList.add('on')})});
+['dragleave','drop'].forEach(function(e){d.addEventListener(e,function(x){x.preventDefault();d.classList.remove('on')})});
+d.addEventListener('drop',function(x){load(x.dataTransfer.files[0])});
+})()</script>`,
   { nl, active: 'subscribers', wide: true, msg: req.query.m });
 });
 dash.get('/app/n/:nid/subscribers/export.csv', async (req, res) => {
@@ -218,12 +230,11 @@ dash.post('/app/n/:nid/subscribers/add', async (req, res) => {
   back(res, `/app/n/${req.nl.id}/subscribers`, await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
 });
 dash.post('/app/n/:nid/subscribers/import', async (req, res) => {
+  const { rows, invalid, dup } = parseSubscribers(req.body.csv);
   let added = 0;
-  for (const line of String(req.body.csv || '').split(/\r?\n/)) {
-    const [email, name = ''] = line.split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
-    if (EMAIL_RE.test(email || '')) added += await addSub(req.nl.id, email.toLowerCase(), name.slice(0, 80), 'import');
-  }
-  back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.`);
+  for (const r of rows) added += await addSub(req.nl.id, r.email, r.name, 'import');
+  const skip = [rows.length - added && `이미 있는 ${rows.length - added}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
+  back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.${skip.length ? ` (건너뜀: ${skip.join(', ')})` : ''}`);
 });
 // 결제 없이 유료 혜택 지정/해제 (후원자·지인 등). 결제 중인 구독자는 해제하지 않는다
 dash.post('/app/n/:nid/subscribers/:id/tier', async (req, res) => {
