@@ -2,8 +2,7 @@ import { h } from './render.js';
 import { FAVICON } from './landing.js';
 
 const CSS = `
-:root{--bg:#F8FAFC;--card:#fff;--ink:#0F172A;--mute:#64748B;--line:#E2E8F0;--soft:#F1F5F9;--accent:#0F172A;--accent-ink:#fff;--blue:#3B82F6;--blue-soft:#EEF3FF;--bad:#DC2626}
-@media(prefers-color-scheme:dark){:root{--bg:#0B1120;--card:#111A2E;--ink:#E5EAF3;--mute:#94A3B8;--line:#1E293B;--soft:#16213A;--accent:#3B82F6;--accent-ink:#fff;--blue:#60A5FA;--blue-soft:#14233F;--bad:#F87171}}
+:root{--bg:#F8FAFC;--card:#fff;--ink:#0F172A;--mute:#64748B;--line:#E2E8F0;--soft:#F1F5F9;--accent:#0F172A;--accent-ink:#fff;--blue:#3B82F6;--blue-soft:#EEF3FF;--bad:#DC2626;color-scheme:light}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 'Pretendard','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;letter-spacing:-.015em;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
