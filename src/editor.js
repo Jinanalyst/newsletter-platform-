@@ -103,7 +103,8 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
   const cfg = { nid: nl.id, id: p.id, status: p.status, rev: p.updated_at || '', body_md: p.body_md, scheduled_at: p.scheduled_at || '',
     templates: tpls, sample: { name: req.user.name || '', email: req.user.email }, from: nl.name };
   res.page('글 쓰기', `<div class="row"><h1 class="grow">글 쓰기 <span class="badge ${p.status}">${p.status}</span></h1>
-<span class="mute" id="savestate">${p.status === 'scheduled' ? '예약됨 — 수정하면 예약이 해제됩니다' : ''}</span></div>
+<span class="mute" id="savestate">${p.status === 'scheduled' ? '예약됨 — 수정하면 예약이 해제됩니다' : ''}</span>
+<button type="button" class="sm" id="pvopen">미리보기</button></div>
 <form method="post" id="f"><input type="hidden" name="tz" id="tz"><input type="hidden" name="body_md" id="body">
 <div class="editor"><div>
 <label>제목</label><input name="subject" value="${h(p.subject)}" maxlength="200" placeholder="제목에도 {{name}} 을 쓸 수 있어요">
@@ -119,9 +120,10 @@ ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설�
 <div id="blocks" class="blocks"></div><textarea id="raw" hidden rows="24"></textarea>
 <p class="mute">빈 줄에서 <code>/</code>를 입력하면 블록 메뉴가 열립니다. <code>#</code> <code>-</code> <code>1.</code> <code>&gt;</code> <code>---</code> 단축 입력도 지원합니다.</p>
 </div>
-<div class="pvcol"><div class="row" style="margin-bottom:8px"><div class="seg" id="pvmode"><button type="button" class="on" data-m="web">웹</button><button type="button" data-m="email">이메일</button></div>
-<div class="seg" id="pvdev"><button type="button" class="on" data-d="d">데스크톱</button><button type="button" data-d="m">모바일</button></div></div>
-<div id="inbox" class="inbox" hidden></div><div class="pvwrap" id="pvwrap"><iframe id="pv" sandbox=""></iframe></div></div></div>
+<div class="pvcol" id="pvcol" hidden><div class="pvbox"><div class="row" style="margin-bottom:8px"><div class="seg" id="pvmode"><button type="button" class="on" data-m="web">웹</button><button type="button" data-m="email">이메일</button></div>
+<div class="seg" id="pvdev"><button type="button" class="on" data-d="d">데스크톱</button><button type="button" data-d="m">모바일</button></div>
+<button type="button" class="sm grow-end" id="pvclose">닫기 ✕</button></div>
+<div id="inbox" class="inbox" hidden></div><div class="pvwrap" id="pvwrap"><iframe id="pv" sandbox=""></iframe></div></div></div></div>
 <div class="card"><div class="row"><div><label>발송 대상</label><select name="audience">
 <option value="all" ${p.audience === 'all' ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만 (유료 전용 글)</option>
 <option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option></select></div>

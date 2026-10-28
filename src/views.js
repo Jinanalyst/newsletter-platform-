@@ -108,7 +108,11 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--card)}
 .seg button{border:0;border-radius:0;padding:5px 14px;font-size:12.5px;background:transparent}
 .seg button.on{background:var(--accent);color:var(--accent-ink)}
-.pvcol{position:sticky;top:12px;align-self:start}
+.editor{grid-template-columns:minmax(0,1fr)}
+.pvcol{position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:20px}
+.pvcol[hidden]{display:none}
+.pvbox{background:var(--card);border-radius:16px;padding:16px;width:min(960px,100%);max-height:100%;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.grow-end{margin-left:auto}
 .inbox{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px;font-size:13.5px;background:var(--soft)}
 .inbox b{font-weight:600}.inbox div{font-weight:500}.inbox span{color:var(--mute)}
 .pvwrap iframe{height:620px}

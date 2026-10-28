@@ -287,7 +287,7 @@
   function changed(force) {
     bodyField.value = current().body_md;
     dirty = true;
-    clearTimeout(pvTimer); pvTimer = setTimeout(updatePreview, 350);
+    clearTimeout(pvTimer); if (!pvcol.hidden) pvTimer = setTimeout(updatePreview, 350);
     if (cfg.status === 'draft' && !stopped) { setState('저장 대기 중…'); clearTimeout(saveTimer); saveTimer = setTimeout(autosave, force ? 200 : 2000); }
   }
   async function autosave(keepalive = false) {
@@ -312,7 +312,12 @@
 
   // ---------- 미리보기 ----------
   let pvMode = 'web', pvDev = 'd';
-  const pv = $('#pv'), inbox = $('#inbox'), wrap = $('#pvwrap');
+  const pv = $('#pv'), inbox = $('#inbox'), wrap = $('#pvwrap'), pvcol = $('#pvcol');
+  const setPv = (open) => { pvcol.hidden = !open; if (open) updatePreview(); };
+  $('#pvopen').onclick = () => setPv(true);
+  $('#pvclose').onclick = () => setPv(false);
+  pvcol.onclick = (e) => { if (e.target === pvcol) setPv(false); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pvcol.hidden) setPv(false); });
   const merge = (t) => String(t).replace(/\{\{\s*(name|nickname|email)\s*(?:\|\s*([^{}]*?)\s*)?\}\}/gi, (_, k, fb) => (k.toLowerCase() === 'email' ? cfg.sample.email : cfg.sample.name) || fb || (k.toLowerCase() === 'email' ? '' : '독자'));
   async function updatePreview() {
     const c = payload();
@@ -345,5 +350,4 @@
   render();
   bodyField.value = current().body_md;
   dirty = false;
-  updatePreview();
 })();
