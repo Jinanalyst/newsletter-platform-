@@ -1,0 +1,17 @@
+# 비밀값 — 절대 커밋하지 않습니다 (예시는 .env.example)
+.env
+.env.*
+!.env.example
+
+# 의존성 / 실행 중 생성되는 데이터
+node_modules/
+data/
+uploads/
+outbox/
+
+# 도구·로그
+.claude/
+.vercel/
+*.log
+.DS_Store
+Thumbs.db
