@@ -268,15 +268,18 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
   const b = req.body;
   const name = String(b.name || '').trim();
   if (!name) return back(res, `/app/n/${req.nl.id}/settings`, '이름을 입력하세요.');
-  const logo = isOwnImageUrl(b.logo) ? b.logo : '';
+  // 주소가 검증을 통과하지 못해도 기존 이미지를 지우지 않고 유지한다 (빈 값만 '제거'로 본다)
+  let rejected = false;
+  const keepImg = (v, old) => { if (!v) return ''; if (isOwnImageUrl(v)) return v; rejected = true; return old || ''; };
+  const logo = keepImg(b.logo, req.nl.logo);
   const categories = cleanTags(b.categories);
-  const cover = isOwnImageUrl(b.cover) ? b.cover : '';
+  const cover = keepImg(b.cover, req.nl.cover);
   const coverP = coverPos(b.cover_pos);
   const accent = /^#[0-9a-f]{6}$/i.test(b.accent || '') ? b.accent : '';
   await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, cover_pos=?, accent=?, sns=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, coverP, accent, parseSns(b), req.nl.id);
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
   await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
-  back(res, `/app/n/${req.nl.id}/settings`, '저장했습니다.');
+  back(res, `/app/n/${req.nl.id}/settings`, rejected ? '저장했습니다. 다만 이미지 주소가 올바르지 않아 기존 이미지를 유지했어요. 다시 업로드해 주세요.' : '저장했습니다.');
 });
 dash.post('/app/n/:nid/delete', async (req, res) => {
   await db.prepare('DELETE FROM newsletters WHERE id=?').run(req.nl.id);

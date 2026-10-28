@@ -168,9 +168,11 @@ pub.get('/n/:slug', async (req, res) => {
   const abs = (u) => (!u ? '' : /^https?:/i.test(u) ? u : baseUrl() + u);
   const pageUrl = `${baseUrl()}/n/${nl.slug}`;
   const ogImg = abs(nl.cover || nl.logo);
+  // 대표 색상 그라데이션은 커버 아래에 항상 깔아 둔다: 커버가 없거나 불러오지 못해도 회색 대신 대표 색이 보인다
+  const accentBg = `linear-gradient(135deg,${accent},color-mix(in srgb,${accent} 45%,#0F172A))`;
   const bg = nl.cover
-    ? `linear-gradient(rgba(15,23,42,.5),rgba(15,23,42,.8)),url('${h(nl.cover)}') ${/^\d{1,3}% \d{1,3}%$/.test(nl.cover_pos || '') ? nl.cover_pos : 'center'}/cover no-repeat`
-    : `linear-gradient(135deg,${accent},color-mix(in srgb,${accent} 45%,#0F172A))`;
+    ? `linear-gradient(rgba(15,23,42,.45),rgba(15,23,42,.75)),url('${h(nl.cover)}') ${/^\d{1,3}% \d{1,3}%$/.test(nl.cover_pos || '') ? nl.cover_pos : 'center'}/cover no-repeat,${accentBg}`
+    : accentBg;
   const shareText = encodeURIComponent(`${nl.name} — ${nl.description}`.slice(0, 200));
   const lpCss = `<style>
 body{background:var(--bg)}
@@ -195,7 +197,7 @@ body{background:var(--bg)}
 .lp-foot{text-align:center;padding:0 20px 40px}
 </style>`;
   res.page(nl.name, `<header class="lp-hero"><div class="in">
-${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="">` : ''}
+${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="" onerror="this.remove()">` : ''}
 <h1>${h(nl.name)}</h1><p class="by">by ${h(nl.owner || '발행자')}</p>
 <p class="desc">${h(nl.description)}</p>
 ${snsLinks(nl)}
