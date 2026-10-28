@@ -82,7 +82,7 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
 <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(post.subject)}" target="_blank" rel="noopener">X</a> ·
 <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}" target="_blank" rel="noopener">Facebook</a></p>`;
   const foot = mode === 'web'
-    ? `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">${post.id ? share : ''}<p><a href="${base}/n/${h(nl.slug)}">${h(nl.name)} 구독하기 →</a></p>`
+    ? `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">${post.id ? share : ''}<p style="text-align:center;margin:24px 0 8px"><a href="${base}/n/${h(nl.slug)}" style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:999px">${h(nl.name)} 구독하기</a></p>`
     : `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">
 <div style="font-size:13px;color:#888"><p>${h(nl.name)}의 구독자이기 때문에 받은 메일입니다.<br>
 ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게 추천하기</a> · ` : ''}${sub?.token && hasPaid(nl) && !isPaid(sub) ? `<a href="${upgrade}" style="color:#888">유료 구독</a> · ` : ''}<a href="${unsub}" style="color:#888">구독 해지</a></p></div>`;
