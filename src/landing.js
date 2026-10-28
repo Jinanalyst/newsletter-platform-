@@ -142,7 +142,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;color:#64748B;font-s
 footer .wrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
 footer .sp{flex:1}
 footer a:hover{color:var(--navy)}
-footer .langsw{font-size:13px}footer .langsw b{color:var(--navy);font-weight:600}
+footer .langsw{font-size:13px;display:inline-flex;gap:14px}footer .langsw b{color:var(--navy);font-weight:600}
 html[lang=ja] body,html[lang=zh] body{word-break:normal}
 .mark{width:26px;height:26px}
 /* 커뮤니티 포스트 */

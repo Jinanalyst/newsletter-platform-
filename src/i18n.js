@@ -48,7 +48,7 @@ export function langRoute(req, res) {
 }
 
 export const langSwitcher = (lang) => `<span class="langsw" aria-label="Language">${Object.entries(LANGS)
-  .map(([code, name]) => (code === lang ? `<b>${name}</b>` : `<a href="/lang/${code}" rel="nofollow">${name}</a>`)).join(' · ')}</span>`;
+  .map(([code, name]) => (code === lang ? `<b>${name}</b>` : `<a href="/lang/${code}" rel="nofollow">${name}</a>`)).join('')}</span>`;
 
 const DICT = {
   en: {

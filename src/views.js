@@ -24,6 +24,16 @@ nav .sp{flex:1}
 nav .btn{padding:5px 16px}
 nav form{margin:0}nav form button{border:0;background:none;padding:2px 0;color:var(--mute);font-size:14px;border-radius:0}
 nav form button:hover{color:var(--ink)}
+/* 공통 푸터 */
+.pf{border-top:1px solid var(--line);margin-top:32px;padding:26px 28px 34px;color:var(--mute);font-size:13.5px}
+.pfin{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap}
+.pfin .wm{font-size:20px}.pfin .sp{flex:1}
+.pfc{max-width:960px;margin:10px auto 0;font-size:12.5px;color:#94A3B8}
+.langsw{display:inline-flex;gap:2px;flex-wrap:wrap}
+.langsw a,.langsw b{padding:3px 10px;border-radius:999px;font-size:13px;font-weight:400;text-decoration:none}
+.langsw a{color:var(--mute)}.langsw a:hover{background:var(--soft);color:var(--ink)}
+.langsw b{background:var(--soft);color:var(--ink);font-weight:600}
+@media(max-width:860px){.pf{padding:22px 18px 28px}}
 .row.nowrap{flex-wrap:nowrap}.row.nowrap>input{flex:1 1 auto;min-width:0;width:auto}
 input[type=file]{border:0;padding:0;background:none;font-size:13px;color:var(--mute)}
 input[type=file]::file-selector-button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 12px;margin-right:12px;cursor:pointer}
@@ -181,7 +191,9 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <title>${h(title)}</title>${FAVICON}${head}
 <style>${CSS}</style></head><body>${nav}
 <div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>${t('이메일 인증이 필요합니다.')}</b> ${t('인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.')}
-<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}${nl ? '' : `<p class="mute" style="margin-top:48px;text-align:center">${langSwitcher(lang)}</p>`}</div></body></html>`;
+<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${nl ? '' : `
+<footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>${langSwitcher(lang)}</div>
+<div class="pfc">© ${new Date().getFullYear()} lett.</div></footer>`}</body></html>`;
 }
 
 export const fmt = (iso, lang = 'ko') => (iso ? new Date(iso).toLocaleString(LOCALES[lang] || 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
