@@ -9,6 +9,7 @@ import { billing, stripeWebhook } from './billing.js';
 import { loadUser } from './auth.js';
 import { sbRouter, sbEnabled } from './supabase.js';
 import { page } from './views.js';
+import { langMiddleware, langRoute, tr } from './i18n.js';
 import { startScheduler, tick } from './send.js';
 
 const app = express();
@@ -38,8 +39,10 @@ app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta
 app.use('/uploads', express.static('uploads', { maxAge: '7d', index: false, dotfiles: 'deny' })); // 로컬 개발용 업로드 폴더
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 app.use(loadUser);
+app.use(langMiddleware);
+app.get('/lang/:code', langRoute);
 app.use((req, res, next) => {
-  res.page = (title, body, opts = {}) => res.send(page(title, body, { user: req.user, ...opts }));
+  res.page = (title, body, opts = {}) => res.send(page(title, body, { user: req.user, lang: req.lang, ...opts }));
   next();
 });
 app.use(sbRouter); // SUPABASE_URL 설정 시 가입·로그인·재설정을 Supabase가 처리 (미설정이면 아래 기본 라우트로 통과)
@@ -49,13 +52,14 @@ app.use(ed);   // 글 작성 도구 (블록 에디터·템플릿·가져오기)
 app.use(dash);
 app.use(pro);
 
-app.use((req, res) => res.status(404).page('찾을 수 없음', '<h1>페이지를 찾을 수 없습니다</h1><p><a href="/">홈으로</a></p>'));
+app.use((req, res) => res.status(404).page(req.t('찾을 수 없음'), `<h1>${req.t('페이지를 찾을 수 없습니다')}</h1><p><a href="/">${req.t('홈으로')}</a></p>`));
 // 처리되지 않은 오류(DB 연결 문제 등): 내부 정보는 숨기고 로그에만 남긴다
 app.use((err, req, res, next) => {
   console.error('요청 처리 오류', req.method, req.path, err);
   if (res.headersSent) return next(err);
-  const send = (body) => (res.page ? res.status(500).page('오류', body) : res.status(500).send('서버 오류'));
-  send('<h1>일시적인 오류가 발생했습니다</h1><p>잠시 후 다시 시도해 주세요.</p><p><a href="/">홈으로</a></p>');
+  const t = req.t || tr('ko');
+  const send = (body) => (res.page ? res.status(500).page(t('오류'), body) : res.status(500).send('서버 오류'));
+  send(`<h1>${t('일시적인 오류가 발생했습니다')}</h1><p>${t('잠시 후 다시 시도해 주세요.')}</p><p><a href="/">${t('홈으로')}</a></p>`);
 });
 
 export default app;

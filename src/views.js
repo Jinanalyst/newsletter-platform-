@@ -1,11 +1,13 @@
 import { h } from './render.js';
 import { FAVICON } from './landing.js';
+import { tr, LOCALES, langSwitcher } from './i18n.js';
 
 const CSS = `
 :root{--bg:#F8FAFC;--card:#fff;--ink:#0F172A;--mute:#64748B;--line:#E2E8F0;--soft:#F1F5F9;--accent:#0F172A;--accent-ink:#fff;--blue:#3B82F6;--blue-soft:#EEF3FF;--bad:#DC2626;color-scheme:light}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 'Pretendard','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;letter-spacing:-.015em;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
+html[lang=ja] body,html[lang=zh] body{word-break:normal}
 a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;transition:text-decoration-color .15s}
 a:hover{text-decoration-color:var(--blue)}
 .wrap{max-width:640px;margin:0 auto;padding:56px 24px 96px}
@@ -154,13 +156,14 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 `;
 
 // user: 로그인한 사용자, nl: 대시보드에서 작업 중인 뉴스레터
-export function page(title, body, { user = null, nl = null, active = '', wide = false, msg = '', head = '', bare = false } = {}) {
+export function page(title, body, { user = null, nl = null, active = '', wide = false, msg = '', head = '', bare = false, lang = 'ko' } = {}) {
+  const t = tr(lang);
   // bare: 상단 내비게이션·본문 래퍼 없이 body 를 그대로 출력 (랜딩형 페이지)
-  if (bare) return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+  if (bare) return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${h(title)}</title>${FAVICON}${head}
 <style>${CSS}</style></head><body>${body}</body></html>`;
-  const logout = `<form method="post" action="/logout"><button>로그아웃</button></form>`;
+  const logout = `<form method="post" action="/logout"><button>${t('로그아웃')}</button></form>`;
   let nav;
   if (nl) {
     nav = `<nav><a href="/app">←</a><a href="/app/n/${nl.id}" class="brand"><b>${h(nl.name)}</b></a>
@@ -168,18 +171,18 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
   .map(([p, l]) => `<a href="/app/n/${nl.id}${p ? '/' + p : ''}" class="${active === p ? 'on' : ''}">${l}</a>`).join('')}
 <span class="sp"></span><a href="/n/${h(nl.slug)}" target="_blank">공개 페이지 ↗</a>${logout}</nav>`;
   } else if (user) {
-    nav = `<nav><a href="/" class="wm" aria-label="lett. 홈">lett<i>.</i></a><a href="/app" class="${active === 'app' ? 'on' : ''}">내 뉴스레터</a>
-<a href="/app/profile" class="${active === 'profile' ? 'on' : ''}">프로필</a><span class="sp"></span><span class="mute">${h(user.name || user.email)}</span>${logout}</nav>`;
+    nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><a href="/app" class="${active === 'app' ? 'on' : ''}">${t('내 뉴스레터')}</a>
+<a href="/app/profile" class="${active === 'profile' ? 'on' : ''}">${t('프로필')}</a><span class="sp"></span><span class="mute">${h(user.name || user.email)}</span>${logout}</nav>`;
   } else {
-    nav = `<nav><a href="/" class="wm" aria-label="lett. 홈">lett<i>.</i></a><span class="sp"></span><a href="/login">로그인</a><a class="btn primary sm" href="/signup">시작하기</a></nav>`;
+    nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="sp"></span><a href="/login">${t('로그인')}</a><a class="btn primary sm" href="/signup">${t('시작하기')}</a></nav>`;
   }
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${h(title)}</title>${FAVICON}${head}
 <style>${CSS}</style></head><body>${nav}
-<div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>이메일 인증이 필요합니다.</b> 인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.
-<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">인증 메일 다시 받기</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div></body></html>`;
+<div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>${t('이메일 인증이 필요합니다.')}</b> ${t('인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.')}
+<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}${nl ? '' : `<p class="mute" style="margin-top:48px;text-align:center">${langSwitcher(lang)}</p>`}</div></body></html>`;
 }
 
-export const fmt = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+export const fmt = (iso, lang = 'ko') => (iso ? new Date(iso).toLocaleString(LOCALES[lang] || 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 export const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 + '%' : '—');

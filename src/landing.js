@@ -1,5 +1,6 @@
 // 메인 랜딩 페이지 — 컨셉: "누구나 자신의 이야기를 세상에 펼칠 수 있는 공간"
 import { h } from './render.js';
+import { tr, langSwitcher } from './i18n.js';
 
 // 브랜드: 네이비 #0F172A · 블루 #3B82F6 · 배경 #F8FAFC · 그레이 #94A3B8
 export const FAVICON = `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#0F172A"/><rect x="11" y="7" width="6.5" height="21" rx="3.2" fill="#fff"/><circle cx="26" cy="27" r="5" fill="#3B82F6"/></svg>')}">`;
@@ -140,6 +141,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;color:#64748B;font-s
 footer .wrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
 footer .sp{flex:1}
 footer a:hover{color:var(--navy)}
+footer .langsw{font-size:13px}footer .langsw b{color:var(--navy);font-weight:600}
+html[lang=ja] body,html[lang=zh] body{word-break:normal}
 .mark{width:26px;height:26px}
 @media(max-width:980px){
   .hero .wrap{grid-template-columns:1fr;padding-top:48px;padding-bottom:72px;min-height:0}
@@ -167,67 +170,69 @@ const ICON = {
 const mountain = (c1, c2, c3) => `<svg viewBox="0 0 300 190" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g${c1.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
 <rect width="300" height="190" fill="url(#g${c1.slice(1)})"/><path d="M0 120 90 62l56 46 52-34 102 62v54H0z" fill="${c3}" opacity=".45"/><path d="M0 146 70 100l62 40 70-52 98 70v32H0z" fill="${c3}" opacity=".7"/><rect y="132" width="300" height="60" fill="#fff" opacity=".28"/></svg>`;
 
-export function landingPage({ user, list }) {
+export function landingPage({ user, list, lang = 'ko' }) {
+  const t = tr(lang);
   const cta = user
-    ? '<a class="pill" href="/app">내 뉴스레터로 이동 →</a>'
-    : '<a class="pill" href="/signup">지금 시작하기 →</a><a class="pill ghost" href="#explore">뉴스레터 탐색하기</a>';
+    ? `<a class="pill" href="/app">${t('내 뉴스레터로 이동 →')}</a>`
+    : `<a class="pill" href="/signup">${t('지금 시작하기 →')}</a><a class="pill ghost" href="#explore">${t('뉴스레터 탐색하기')}</a>`;
   const explore = list.length
     ? `<div class="ex">${list.map((n) => `<a class="xc" href="/n/${h(n.slug)}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
-<div><b>${h(n.name)}</b><small>${h(n.owner || '발행자')} · 구독자 ${n.subs}명 · 글 ${n.posts}편</small></div></div><p>${h(n.description || '아직 소개가 없습니다.')}</p></a>`).join('')}</div>`
-    : '<div class="empty"><b style="color:var(--navy);font-size:18px">아직 열려 있는 뉴스레터가 없어요.</b><br>첫 번째 이야기의 주인공이 되어보세요.<br><br><a class="pill sm" href="/signup">뉴스레터 만들기</a></div>';
+<div><b>${h(n.name)}</b><small>${h(n.owner || t('발행자'))} · ${t('구독자 {n}명 · 글 {p}편', { n: n.subs, p: n.posts })}</small></div></div><p>${h(n.description || t('아직 소개가 없습니다.'))}</p></a>`).join('')}</div>`
+    : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 열려 있는 뉴스레터가 없어요.')}</b><br>${t('첫 번째 이야기의 주인공이 되어보세요.')}<br><br><a class="pill sm" href="/signup">${t('뉴스레터 만들기')}</a></div>`;
+  const words = ['에세이', '인터뷰', '큐레이션', '리뷰', '일기', '뉴스', '칼럼', '레시피', '여행기', '투자 노트', '기술 블로그', '육아 일지'];
 
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>lett. — 당신의 이야기가 시작되는 곳</title>
-<meta name="description" content="누구나 자신의 이야기를 세상에 펼칠 수 있는 공간. 뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.">
-<meta property="og:title" content="lett. — 당신의 이야기가 시작되는 곳"><meta property="og:description" content="누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.">
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${h(t('lett. — 당신의 이야기가 시작되는 곳'))}</title>
+<meta name="description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간. 뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.'))}">
+<meta property="og:title" content="${h(t('lett. — 당신의 이야기가 시작되는 곳'))}"><meta property="og:description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.'))}">
 <meta name="theme-color" content="#F8FAFC">${FAVICON}<style>${CSS}</style></head><body>
-<header id="hd"><div class="wrap nav"><a href="/" class="wm" aria-label="lett. 홈">lett<i>.</i></a>
-<nav class="links" aria-label="주요 메뉴"><a href="#how">시작하기</a><a href="#features">기능</a><a href="#explore">탐색</a></nav><span class="sp"></span>
-${user ? '<a class="login" href="/app/profile">프로필</a><a class="pill sm" href="/app">내 뉴스레터</a>' : '<a class="login" href="/login">로그인</a><a class="pill sm" href="/signup">시작하기</a>'}</div></header>
+<header id="hd"><div class="wrap nav"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a>
+<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="#explore">${t('탐색')}</a></nav><span class="sp"></span>
+${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pill sm" href="/app">${t('내 뉴스레터')}</a>` : `<a class="login" href="/login">${t('로그인')}</a><a class="pill sm" href="/signup">${t('시작하기')}</a>`}</div></header>
 
 <main>
 <div class="hero" id="hero"><div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div><div class="wrap"><div>
-<span class="eyebrow rise">글쓰기부터 발송, 구독자 관리까지 한 곳에서</span>
-<h1><span class="ln rise" style="--d:.1s">당신의 이야기가</span><span class="ln rise" style="--d:.25s"><em>시작되는 곳.</em></span></h1>
-<p class="lead rise" style="--d:.4s">누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.<br>뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.</p>
-<div class="cta rise" style="--d:.55s">${cta}</div><p class="note rise" style="--d:.7s">무료로 시작할 수 있어요 · 카드 등록 없이 바로 만들기</p></div>
+<span class="eyebrow rise">${t('글쓰기부터 발송, 구독자 관리까지 한 곳에서')}</span>
+<h1><span class="ln rise" style="--d:.1s">${t('당신의 이야기가')}</span><span class="ln rise" style="--d:.25s"><em>${t('시작되는 곳.')}</em></span></h1>
+<p class="lead rise" style="--d:.4s">${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}<br>${t('뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.')}</p>
+<div class="cta rise" style="--d:.55s">${cta}</div><p class="note rise" style="--d:.7s">${t('무료로 시작할 수 있어요 · 카드 등록 없이 바로 만들기')}</p></div>
 <div class="stack" id="stack" aria-hidden="true">
 <svg class="plane" viewBox="0 0 34 34"><path d="M3 17 31 4 24 30 17 20z" fill="#3B82F6"/><path d="M17 20 31 4 14 15z" fill="#93C5FD"/></svg>
-<div class="bdg x"><b>+128</b> 새 구독자</div><div class="bdg y">이번 주 열람률 <b>62%</b></div>
-<div class="pc a"><div class="img">${mountain('#DBE4F2', '#EEF2F8', '#5B6B86')}</div><div class="bd"><div class="t">이번 주 도시 산책</div><p>걷다 보면 보이는 것들</p></div></div>
-<div class="pc b"><div class="img">${mountain('#D7EBDD', '#EEF6F0', '#3C7B5A')}</div><div class="bd"><div class="t">주말의 식물 일기</div><p>작은 화분에서 배운 것</p></div></div>
-<div class="pc c"><div class="img">${mountain('#C9D6EA', '#E8EEF7', '#64748B')}</div><div class="bd"><div class="t">월요일 아침, 한 가지 생각</div>
-<div class="by"><span class="av"></span>발행자 · 주간 뉴스레터</div><p>이번 주에 마음에 남은 이야기를 천천히 정리했어요. 함께 생각해 보실래요?</p>
-<div class="ft"><span><b>●</b> 이메일로 발송</span><span>웹에도 게시</span></div></div></div></div></div></div>
+<div class="bdg x"><b>+128</b> ${t('새 구독자')}</div><div class="bdg y">${t('이번 주 열람률')} <b>62%</b></div>
+<div class="pc a"><div class="img">${mountain('#DBE4F2', '#EEF2F8', '#5B6B86')}</div><div class="bd"><div class="t">${t('이번 주 도시 산책')}</div><p>${t('걷다 보면 보이는 것들')}</p></div></div>
+<div class="pc b"><div class="img">${mountain('#D7EBDD', '#EEF6F0', '#3C7B5A')}</div><div class="bd"><div class="t">${t('주말의 식물 일기')}</div><p>${t('작은 화분에서 배운 것')}</p></div></div>
+<div class="pc c"><div class="img">${mountain('#C9D6EA', '#E8EEF7', '#64748B')}</div><div class="bd"><div class="t">${t('월요일 아침, 한 가지 생각')}</div>
+<div class="by"><span class="av"></span>${t('발행자 · 주간 뉴스레터')}</div><p>${t('이번 주에 마음에 남은 이야기를 천천히 정리했어요. 함께 생각해 보실래요?')}</p>
+<div class="ft"><span><b>●</b> ${t('이메일로 발송')}</span><span>${t('웹에도 게시')}</span></div></div></div></div></div></div>
 
-<div class="mq" aria-hidden="true"><div class="mqt">${[...Array(2)].map(() => ['에세이', '인터뷰', '큐레이션', '리뷰', '일기', '뉴스', '칼럼', '레시피', '여행기', '투자 노트', '기술 블로그', '육아 일지'].map((w) => `<span>${w}</span>`).join('')).join('')}</div></div>
+<div class="mq" aria-hidden="true"><div class="mqt">${[...Array(2)].map(() => words.map((w) => `<span>${t(w)}</span>`).join('')).join('')}</div></div>
 
-<section id="how"><div class="wrap"><div class="kicker">HOW IT WORKS</div><h2>쓰고, 보내고, 키우세요.</h2>
-<p class="sub">복잡한 설정 없이 세 단계면 충분합니다. 나머지는 lett.가 맡을게요.</p>
+<section id="how"><div class="wrap"><div class="kicker">HOW IT WORKS</div><h2>${t('쓰고, 보내고, 키우세요.')}</h2>
+<p class="sub">${t('복잡한 설정 없이 세 단계면 충분합니다. 나머지는 lett.가 맡을게요.')}</p>
 <div class="steps">
-<div class="step"><div class="n">01</div><h3>쓰세요</h3><p>블록을 쌓듯 글을 쓰고, 이미지와 링크를 더하세요. 자동 저장과 버전 기록으로 쓰던 글을 잃어버릴 걱정이 없어요.</p></div>
-<div class="step"><div class="n">02</div><h3>보내세요</h3><p>이메일로 발송하고 웹 페이지에도 함께 게시하세요. 테스트 발송으로 먼저 확인하고, 원하는 시각에 예약할 수 있어요.</p></div>
-<div class="step"><div class="n">03</div><h3>키우세요</h3><p>구독 페이지와 추천 링크로 독자를 만나고, 열람률과 클릭률로 어떤 글이 사랑받는지 확인하세요.</p></div></div></div></section>
+<div class="step"><div class="n">01</div><h3>${t('쓰세요')}</h3><p>${t('블록을 쌓듯 글을 쓰고, 이미지와 링크를 더하세요. 자동 저장과 버전 기록으로 쓰던 글을 잃어버릴 걱정이 없어요.')}</p></div>
+<div class="step"><div class="n">02</div><h3>${t('보내세요')}</h3><p>${t('이메일로 발송하고 웹 페이지에도 함께 게시하세요. 테스트 발송으로 먼저 확인하고, 원하는 시각에 예약할 수 있어요.')}</p></div>
+<div class="step"><div class="n">03</div><h3>${t('키우세요')}</h3><p>${t('구독 페이지와 추천 링크로 독자를 만나고, 열람률과 클릭률로 어떤 글이 사랑받는지 확인하세요.')}</p></div></div></div></section>
 
-<section id="features" class="feat"><div class="wrap"><div class="kicker">FEATURES</div><h2>이야기에만 집중할 수 있게.</h2>
-<p class="sub">창작에 필요한 도구를 갖췄습니다.</p>
+<section id="features" class="feat"><div class="wrap"><div class="kicker">FEATURES</div><h2>${t('이야기에만 집중할 수 있게.')}</h2>
+<p class="sub">${t('창작에 필요한 도구를 갖췄습니다.')}</p>
 <div class="fg">
-<div class="f"><div class="ic">${ICON.block}</div><h3>블록 에디터</h3><p>/ 한 번으로 제목, 목록, 인용, 이미지를 추가하세요. 템플릿으로 자주 쓰는 구조를 저장할 수 있어요.</p></div>
-<div class="f"><div class="ic">${ICON.globe}</div><h3>이메일과 웹을 동시에</h3><p>같은 글이 받은편지함과 공개 페이지, RSS에 함께 나갑니다. 미리보기로 두 모양을 모두 확인하세요.</p></div>
-<div class="f"><div class="ic">${ICON.clock}</div><h3>예약·자동 발송</h3><p>원하는 시각에 보내고, 새 구독자에게는 환영 메일과 시리즈 메일이 자동으로 이어집니다.</p></div>
-<div class="f"><div class="ic">${ICON.chart}</div><h3>한눈에 보는 성과</h3><p>구독자 추이, 열람률, 클릭률, 링크별 반응까지. 다음 글의 힌트가 숫자에 있어요.</p></div>
-<div class="f"><div class="ic">${ICON.coin}</div><h3>유료 구독</h3><p>월간·연간 구독을 열고 유료 전용 글을 발행하세요. 매출과 정산 내역도 한곳에서 확인합니다.</p></div>
-<div class="f"><div class="ic">${ICON.import}</div><h3>쉬운 이사</h3><p>Substack, Medium, 워드프레스 등 RSS가 있는 곳의 글을 가져오고, 기존 구독자는 CSV로 옮겨오세요.</p></div></div></div></section>
+<div class="f"><div class="ic">${ICON.block}</div><h3>${t('블록 에디터')}</h3><p>${t('/ 한 번으로 제목, 목록, 인용, 이미지를 추가하세요. 템플릿으로 자주 쓰는 구조를 저장할 수 있어요.')}</p></div>
+<div class="f"><div class="ic">${ICON.globe}</div><h3>${t('이메일과 웹을 동시에')}</h3><p>${t('같은 글이 받은편지함과 공개 페이지, RSS에 함께 나갑니다. 미리보기로 두 모양을 모두 확인하세요.')}</p></div>
+<div class="f"><div class="ic">${ICON.clock}</div><h3>${t('예약·자동 발송')}</h3><p>${t('원하는 시각에 보내고, 새 구독자에게는 환영 메일과 시리즈 메일이 자동으로 이어집니다.')}</p></div>
+<div class="f"><div class="ic">${ICON.chart}</div><h3>${t('한눈에 보는 성과')}</h3><p>${t('구독자 추이, 열람률, 클릭률, 링크별 반응까지. 다음 글의 힌트가 숫자에 있어요.')}</p></div>
+<div class="f"><div class="ic">${ICON.coin}</div><h3>${t('유료 구독')}</h3><p>${t('월간·연간 구독을 열고 유료 전용 글을 발행하세요. 매출과 정산 내역도 한곳에서 확인합니다.')}</p></div>
+<div class="f"><div class="ic">${ICON.import}</div><h3>${t('쉬운 이사')}</h3><p>${t('Substack, Medium, 워드프레스 등 RSS가 있는 곳의 글을 가져오고, 기존 구독자는 CSV로 옮겨오세요.')}</p></div></div></div></section>
 
-<section id="explore"><div class="wrap"><div class="kicker">EXPLORE</div><h2>지금 펼쳐지고 있는 이야기들.</h2>
-<p class="sub">마음에 드는 뉴스레터를 구독해 보세요.</p>${explore}</div></section>
+<section id="explore"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
+<p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p>${explore}</div></section>
 
-<div class="band"><div class="wrap"><div class="bandin"><h2>오늘, 첫 번째 이야기를<br>시작해 보세요.</h2><p>누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.</p>
-<a class="pill white" href="${user ? '/app' : '/signup'}">${user ? '내 뉴스레터로 이동' : '무료로 시작하기'} →</a></div></div></div>
+<div class="band"><div class="wrap"><div class="bandin"><h2>${t('오늘, 첫 번째 이야기를')}<br>${t('시작해 보세요.')}</h2><p>${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}</p>
+<a class="pill white" href="${user ? '/app' : '/signup'}">${user ? t('내 뉴스레터로 이동') : t('무료로 시작하기')} →</a></div></div></div>
 </main>
 
-<footer><div class="wrap"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>당신의 이야기가 시작되는 곳</span><span class="sp"></span>
-${user ? '<a href="/app">내 뉴스레터</a>' : '<a href="/login">로그인</a><a href="/signup">시작하기</a>'}</div></footer>
+<footer><div class="wrap"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>
+${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('로그인')}</a><a href="/signup">${t('시작하기')}</a>`}${langSwitcher(lang)}</div></footer>
 <script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f();
 (function(){var rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
 // 스크롤 등장: 같은 묶음 안에서는 순서대로 조금씩 늦게
