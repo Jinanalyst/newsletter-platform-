@@ -64,7 +64,7 @@ export default app;
 if (!process.env.VERCEL) {
   const port = Number(process.env.PORT || 3000);
   app.listen(port, () => {
-    console.log(`뉴스레터 플랫폼 실행 중 → http://localhost:${port}  (로그인: ${sbEnabled() ? 'Supabase Auth' : '자체 계정'}, DB: ${process.env.DATABASE_URL ? 'Postgres' : '로컬 PGlite'})`);
+    console.log(`뉴스레터 플랫폼 실행 중 → http://localhost:${port}  (로그인: ${sbEnabled() ? 'Supabase Auth' : '자체 계정'}, DB: ${process.env.DATABASE_URL || process.env.POSTGRES_URL ? 'Postgres' : '로컬 PGlite'})`);
     startScheduler();
   });
 }

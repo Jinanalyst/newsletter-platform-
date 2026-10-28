@@ -165,13 +165,24 @@ CREATE INDEX IF NOT EXISTS idx_rate_k ON rate_hits(k, t);
 
 // ---------- 드라이버 ----------
 let driverPromise;
-const useRemote = () => !!process.env.DATABASE_URL;
+// Vercel 의 Supabase 연동은 POSTGRES_URL 로 넣어주므로 그것도 받는다
+const dbUrl = () => process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+const useRemote = () => !!dbUrl();
+
+// 연결 문자열의 sslmode 등은 pg 에서 아래 ssl 설정을 덮어써 인증서 검증 오류(self-signed certificate)를 낸다 → 제거
+function stripSslParams(url) {
+  try {
+    const u = new URL(url);
+    for (const k of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'ssl', 'uselibpqcompat']) u.searchParams.delete(k);
+    return u.toString();
+  } catch { return url; }
+}
 
 async function makeDriver() {
   if (useRemote()) {
     pg.types.setTypeParser(20, (v) => Number(v));    // bigint (COUNT 등) → number
     pg.types.setTypeParser(1700, (v) => Number(v));  // numeric (SUM 등) → number
-    const url = process.env.DATABASE_URL;
+    const url = stripSslParams(dbUrl());
     const local = /@(localhost|127\.0\.0\.1)/.test(url);
     const pool = new pg.Pool({
       connectionString: url,
