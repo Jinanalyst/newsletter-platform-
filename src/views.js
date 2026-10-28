@@ -76,6 +76,9 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
 .grid .card{margin:0}.grid a.card{text-decoration:none;color:inherit;display:block;transition:border-color .15s}
 .grid a.card:hover{border-color:var(--blue);box-shadow:0 18px 36px -24px color-mix(in srgb,var(--blue) 60%,transparent)}
+.item{border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:0 0 12px;background:var(--card);transition:border-color .15s}
+.item:hover{border-color:var(--blue)}
+.item>.mute{display:block;margin-top:6px}
 /* 블록 에디터 */
 .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .sm-select{width:auto;font-size:12.5px;padding:3px 8px}

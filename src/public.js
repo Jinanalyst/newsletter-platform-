@@ -200,7 +200,7 @@ ${req.query.ref ? '<p class="note">친구의 추천으로 방문하셨네요</p>
 </div></header>
 <main class="lp-main">
 ${hasPaid(nl) ? `<p class="mute">유료 구독(${nl.price_monthly ? `월 ${won(nl.price_monthly)}` : ''}${nl.price_monthly && nl.price_yearly ? ' / ' : ''}${nl.price_yearly ? `연 ${won(nl.price_yearly)}` : ''})으로 전용 글을 읽을 수 있어요. 무료 구독 후 <a href="/n/${h(nl.slug)}/upgrade">유료 구독</a>에서 신청하세요.</p>` : ''}
-<h2>아카이브</h2>${filterBar}${posts.length ? posts.map((p) => `<p><a href="/n/${h(nl.slug)}/p/${p.id}">${h(personalize(p.subject, null, { html: false }))}</a>${p.audience === 'paid' || p.body_md.includes('[[paywall]]') ? ' <span class="badge">유료</span>' : ''}<br><span class="mute">${fmt(p.sent_at)}${p.category ? ` · ${h(p.category)}` : ''}${p.tags ? ' ' + p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ') : ''}</span></p>`).join('')
+<h2>아카이브</h2>${filterBar}${posts.length ? posts.map((p) => `<div class="item"><a href="/n/${h(nl.slug)}/p/${p.id}">${h(personalize(p.subject, null, { html: false }))}</a>${p.audience === 'paid' || p.body_md.includes('[[paywall]]') ? ' <span class="badge">유료</span>' : ''}<span class="mute">${fmt(p.sent_at)}${p.category ? ` · ${h(p.category)}` : ''}${p.tags ? ' ' + p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ') : ''}</span></div>`).join('')
     : '<p class="mute">아직 발행된 글이 없습니다.</p>'}
 </main>
 <footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a> · <a href="/">lett.</a>로 만든 뉴스레터</footer>
