@@ -9,6 +9,7 @@ import { smtpConfigured } from './mail.js';
 import { requireUser } from './auth.js';
 import { seedNewsletter } from './seed.js';
 import { page, fmt, pct } from './views.js';
+import { viewStats, postViewStats } from './analytics.js';
 
 export const dash = Router();
 dash.use('/app', requireUser);
@@ -111,6 +112,8 @@ dash.get('/app/n/:nid', async (req, res) => {
     days.push([d, (await db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND status!='pending' AND substr(created_at,1,10)=?").get(nl.id, d)).n]);
   }
   const max = Math.max(1, ...days.map((d) => d[1]));
+  const vs = await viewStats(nl.id, 30);
+  const vmax = Math.max(1, ...vs.daily.map((d) => d[1]));
   const recent = await Promise.all((await db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' ORDER BY id DESC LIMIT 5").all(nl.id)).map(async (p) => {
     const s = await db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
     const k = (await db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id)).n;
@@ -136,6 +139,13 @@ ${smtpConfigured() ? '' : '<div class="msg">SMTP가 설정되지 않아 메일�
 <div class="stat"><b>${await c('pending')}</b>확인 대기</div><div class="stat"><b>${await c('unsubscribed')}</b>해지</div>
 <div class="stat"><b>${Math.max(0, dailySendLimit() - await sentLast24h(nl.id))}</b>24시간 남은 발송량 (한도 ${dailySendLimit()})</div></div>
 <h2>최근 30일 신규 구독</h2><div class="card"><div class="bars">${days.map(([d, n]) => `<i title="${d}: ${n}명" style="height:${Math.max(3, (n / max) * 100)}%"></i>`).join('')}</div></div>
+<h2>웹 방문 · 최근 30일</h2>
+<div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자 (하루 단위 고유)</div>
+<div class="stat"><b>${vs.subViews}</b>구독자 조회</div><div class="stat"><b>${vs.views - vs.subViews}</b>신규·익명 방문</div></div>
+<div class="card"><div class="bars">${vs.daily.map(([d, n]) => `<i title="${d}: ${n}회" style="height:${Math.max(3, (n / vmax) * 100)}%"></i>`).join('')}</div></div>
+<div class="row" style="align-items:flex-start"><div class="grow card" style="margin:0"><b>많이 본 글</b><table>${vs.top.map((r) => `<tr><td><a href="/app/n/${nl.id}/posts/${r.post_id}/stats">${h(r.subject || '(제목 없음)')}</a></td><td>${r.n}회</td></tr>`).join('') || '<tr><td class="mute">아직 조회 기록이 없습니다.</td></tr>'}</table></div>
+<div class="grow card" style="margin:0"><b>유입 경로</b><table>${vs.sources.map((r) => `<tr><td>${r.src ? h(r.src) : '직접 접속·메일'}</td><td>${r.n}회</td></tr>`).join('') || '<tr><td class="mute">아직 조회 기록이 없습니다.</td></tr>'}</table></div></div>
+<p class="mute">웹 조회는 공개 페이지와 글 페이지를 연 횟수예요. 검색 로봇·미리보기 봇과 발행자 본인의 조회는 제외하고, 같은 사람이 30분 안에 다시 열어도 한 번만 세요.</p>
 <div class="row"><h2 class="grow">최근 발행</h2><form method="post" action="/app/n/${nl.id}/posts/new"><button class="primary">+ 새 글</button></form></div>
 <div class="card"><table><tr><th>제목</th><th>상태</th><th>발송</th><th>열람률</th><th>클릭률</th></tr>
 ${recent.join('') || '<tr><td colspan="5" class="mute">아직 글이 없습니다.</td></tr>'}</table></div>
@@ -152,12 +162,14 @@ dash.get('/app/n/:nid/posts/:id/stats', async (req, res) => {
   const tot = await db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
   const failed = (await db.prepare('SELECT COUNT(*) n FROM send_log WHERE post_id=? AND error IS NOT NULL').get(p.id)).n;
   const uc = (await db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id)).n;
+  const pv = await postViewStats(p.id);
   const links = await db.prepare(`SELECT l.url, COUNT(c.id) clicks, COUNT(DISTINCT c.subscriber_id) uniq FROM links l
     LEFT JOIN clicks c ON c.link_id=l.id WHERE l.post_id=? GROUP BY l.id ORDER BY clicks DESC`).all(p.id);
   res.page('통계', `<div class="row"><h1 class="grow">${h(p.subject)}</h1><span class="badge ${p.status}">${p.status}</span></div>
 <p class="mute">${p.status === 'sending' ? '발송 중입니다. 새로고침하면 진행 상황이 갱신됩니다.' : '발송: ' + fmt(p.sent_at)}</p>
 <div class="stats"><div class="stat"><b>${tot.sent}</b>발송</div><div class="stat"><b>${pct(tot.opened, tot.sent)}</b>열람률 (${tot.opened})</div>
-<div class="stat"><b>${pct(uc, tot.sent)}</b>클릭률 (${uc})</div><div class="stat"><b>${failed}</b>실패</div></div>
+<div class="stat"><b>${pct(uc, tot.sent)}</b>클릭률 (${uc})</div><div class="stat"><b>${failed}</b>실패</div>
+<div class="stat"><b>${pv.views}</b>웹 조회</div><div class="stat"><b>${pv.visitors}</b>웹 방문자</div><div class="stat"><b>${pv.subv}</b>구독자 웹 조회</div></div>
 <p class="mute">열람 추적은 이미지 차단 시 집계되지 않아 실제보다 낮게 나올 수 있습니다.</p>
 <h2>링크별 클릭</h2><div class="card"><table><tr><th>URL</th><th>클릭</th><th>고유</th></tr>${links.map((l) =>
   `<tr><td style="word-break:break-all">${h(l.url)}</td><td>${l.clicks}</td><td>${l.uniq}</td></tr>`).join('') || '<tr><td colspan="3" class="mute">링크 없음</td></tr>'}</table></div>

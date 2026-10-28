@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { db, now, baseUrl, isPaid, hasPaid } from './db.js';
 import { enrollSubscriber } from './send.js';
 import { sbEnabled } from './supabase.js';
+import { recordView } from './analytics.js';
 import { landingPage } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
@@ -161,6 +162,7 @@ pub.get('/n/:slug', async (req, res) => {
   const cats = nl.categories.split(',').filter(Boolean);
   const filterBar = cats.length || fc || ft
     ? `<p class="mute"><a href="/n/${h(nl.slug)}"${!fc && !ft ? ' style="font-weight:600"' : ''}>전체</a>${cats.map((x) => ` · <a href="?c=${encodeURIComponent(x)}"${x === fc ? ' style="font-weight:600"' : ''}>${h(x)}</a>`).join('')}${ft ? ` · #${h(ft)}` : ''}</p>` : '';
+  await recordView(req, nl, 0, 0);
   const accent = /^#[0-9a-f]{6}$/i.test(nl.accent) ? nl.accent : '#3B82F6';
   const abs = (u) => (!u ? '' : /^https?:/i.test(u) ? u : baseUrl() + u);
   const pageUrl = `${baseUrl()}/n/${nl.slug}`;
@@ -232,6 +234,7 @@ pub.get('/n/:slug/p/:id', async (req, res) => {
   if (!post) return notFound(res);
   // 메일에서 온 구독자 토큰(?t=)이 유료 구독자이면 전체 공개
   const viewer = req.query.t && await db.prepare("SELECT * FROM subscribers WHERE token=? AND newsletter_id=? AND status='active'").get(String(req.query.t), nl.id);
+  await recordView(req, nl, post.id, viewer?.id || 0);
   res.send(await renderPost(post, nl, { mode: 'web', canRead: isPaid(viewer) }));
 });
 

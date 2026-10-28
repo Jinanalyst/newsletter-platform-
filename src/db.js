@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -161,6 +161,17 @@ CREATE TABLE IF NOT EXISTS rate_hits (
   t BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_rate_k ON rate_hits(k, t);
+CREATE TABLE IF NOT EXISTS page_views (
+  id SERIAL PRIMARY KEY,
+  newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+  post_id INTEGER NOT NULL DEFAULT 0,
+  vid TEXT NOT NULL,
+  sub_id INTEGER NOT NULL DEFAULT 0,
+  referrer TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pv_nl ON page_views(newsletter_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pv_post ON page_views(post_id);
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS cover TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS accent TEXT NOT NULL DEFAULT '';
 `;
