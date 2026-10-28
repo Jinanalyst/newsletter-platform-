@@ -161,16 +161,58 @@ pub.get('/n/:slug', async (req, res) => {
   const cats = nl.categories.split(',').filter(Boolean);
   const filterBar = cats.length || fc || ft
     ? `<p class="mute"><a href="/n/${h(nl.slug)}"${!fc && !ft ? ' style="font-weight:600"' : ''}>전체</a>${cats.map((x) => ` · <a href="?c=${encodeURIComponent(x)}"${x === fc ? ' style="font-weight:600"' : ''}>${h(x)}</a>`).join('')}${ft ? ` · #${h(ft)}` : ''}</p>` : '';
-  res.page(nl.name, `<div class="row" style="gap:16px">${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="">` : ''}
-<div><h1 style="margin:0">${h(nl.name)}</h1><div class="mute">by ${h(nl.owner || '발행자')}</div></div></div>
-<p style="font-size:17px;margin:22px 0 32px">${h(nl.description)}</p>
-${req.query.ref ? '<p class="mute">친구의 추천으로 방문하셨네요</p>' : ''}${subForm(nl, req.query.ref)}
+  const accent = /^#[0-9a-f]{6}$/i.test(nl.accent) ? nl.accent : '#3B82F6';
+  const abs = (u) => (!u ? '' : /^https?:/i.test(u) ? u : baseUrl() + u);
+  const pageUrl = `${baseUrl()}/n/${nl.slug}`;
+  const ogImg = abs(nl.cover || nl.logo);
+  const bg = nl.cover
+    ? `linear-gradient(rgba(15,23,42,.5),rgba(15,23,42,.8)),url('${h(nl.cover)}') center/cover`
+    : `linear-gradient(135deg,${accent},color-mix(in srgb,${accent} 45%,#0F172A))`;
+  const shareText = encodeURIComponent(`${nl.name} — ${nl.description}`.slice(0, 200));
+  const lpCss = `<style>
+body{background:var(--bg)}
+.lp-hero{background:${bg};color:#fff;padding:72px 20px 88px;text-align:center}
+.lp-hero .in{max-width:640px;margin:0 auto}
+.lp-hero .logo{width:84px;height:84px;border-radius:22px;margin:0 auto 18px;display:block;border:2px solid rgba(255,255,255,.55)}
+.lp-hero h1{font-size:clamp(30px,6vw,46px);margin:0;color:#fff;letter-spacing:-.03em}
+.lp-hero .by{opacity:.8;margin:6px 0 0;font-size:14px}
+.lp-hero .desc{font-size:18px;line-height:1.7;margin:22px auto 30px;max-width:540px;opacity:.95;white-space:pre-line}
+.lp-hero form.card{text-align:left;margin:0;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}
+.lp-hero .primary{background:${accent};border-color:${accent};color:#fff}
+.lp-hero .note{opacity:.85;font-size:14px;margin:0 0 14px}
+.lp-share{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+.lp-share a,.lp-share button{border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:7px 16px;font-size:13px;text-decoration:none;cursor:pointer}
+.lp-share a:hover,.lp-share button:hover{background:rgba(255,255,255,.25)}
+.lp-main{max-width:680px;margin:0 auto;padding:40px 20px 72px}
+.lp-main h2{margin-top:0}
+.lp-foot{text-align:center;padding:0 20px 40px}
+</style>`;
+  res.page(nl.name, `<header class="lp-hero"><div class="in">
+${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="">` : ''}
+<h1>${h(nl.name)}</h1><p class="by">by ${h(nl.owner || '발행자')}</p>
+<p class="desc">${h(nl.description)}</p>
+${req.query.ref ? '<p class="note">친구의 추천으로 방문하셨네요</p>' : ''}${req.query.m ? `<p class="note">${h(req.query.m)}</p>` : ''}${subForm(nl, req.query.ref)}
+<div class="lp-share"><button type="button" id="lpshare">공유하기</button><button type="button" id="lpcopy">링크 복사</button>
+<a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${shareText}" target="_blank" rel="noopener">X</a>
+<a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}" target="_blank" rel="noopener">Facebook</a></div>
+</div></header>
+<main class="lp-main">
 ${hasPaid(nl) ? `<p class="mute">유료 구독(${nl.price_monthly ? `월 ${won(nl.price_monthly)}` : ''}${nl.price_monthly && nl.price_yearly ? ' / ' : ''}${nl.price_yearly ? `연 ${won(nl.price_yearly)}` : ''})으로 전용 글을 읽을 수 있어요. 무료 구독 후 <a href="/n/${h(nl.slug)}/upgrade">유료 구독</a>에서 신청하세요.</p>` : ''}
 <h2>아카이브</h2>${filterBar}${posts.length ? posts.map((p) => `<p><a href="/n/${h(nl.slug)}/p/${p.id}">${h(personalize(p.subject, null, { html: false }))}</a>${p.audience === 'paid' || p.body_md.includes('[[paywall]]') ? ' <span class="badge">유료</span>' : ''}<br><span class="mute">${fmt(p.sent_at)}${p.category ? ` · ${h(p.category)}` : ''}${p.tags ? ' ' + p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ') : ''}</span></p>`).join('')
     : '<p class="mute">아직 발행된 글이 없습니다.</p>'}
-<p class="mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a></p>`,
-  { msg: req.query.m, head: `<link rel="alternate" type="application/rss+xml" href="/n/${h(nl.slug)}/rss.xml">
-<meta property="og:title" content="${h(nl.name)}"><meta property="og:description" content="${h(nl.description)}">` });
+</main>
+<footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a> · <a href="/">lett.</a>로 만든 뉴스레터</footer>
+<script>
+(function(){var u=${JSON.stringify(pageUrl)},t=${JSON.stringify(nl.name)};
+var s=document.getElementById('lpshare');if(!navigator.share)s.style.display='none';else s.onclick=function(){navigator.share({title:t,url:u}).catch(function(){})};
+var c=document.getElementById('lpcopy');c.onclick=function(){(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(function(){c.textContent='복사됨 ✓'},function(){prompt('링크를 복사하세요',u)})}})();
+</script>`,
+  { bare: true, head: `${lpCss}<link rel="alternate" type="application/rss+xml" href="/n/${h(nl.slug)}/rss.xml">
+<link rel="canonical" href="${h(pageUrl)}"><meta name="description" content="${h(nl.description)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="lett."><meta property="og:url" content="${h(pageUrl)}">
+<meta property="og:title" content="${h(nl.name)}"><meta property="og:description" content="${h(nl.description)}">${ogImg ? `<meta property="og:image" content="${h(ogImg)}">` : ''}
+<meta name="twitter:card" content="${nl.cover ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${h(nl.name)}"><meta name="twitter:description" content="${h(nl.description)}">${ogImg ? `<meta name="twitter:image" content="${h(ogImg)}">` : ''}
+<meta name="theme-color" content="${accent}">` });
 });
 
 // 외부 사이트에 iframe으로 넣는 구독 폼

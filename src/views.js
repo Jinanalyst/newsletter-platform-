@@ -127,7 +127,12 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 `;
 
 // user: 로그인한 사용자, nl: 대시보드에서 작업 중인 뉴스레터
-export function page(title, body, { user = null, nl = null, active = '', wide = false, msg = '', head = '' } = {}) {
+export function page(title, body, { user = null, nl = null, active = '', wide = false, msg = '', head = '', bare = false } = {}) {
+  // bare: 상단 내비게이션·본문 래퍼 없이 body 를 그대로 출력 (랜딩형 페이지)
+  if (bare) return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${h(title)}</title>${FAVICON}${head}
+<style>${CSS}</style></head><body>${body}</body></html>`;
   const logout = `<form method="post" action="/logout"><button>로그아웃</button></form>`;
   let nav;
   if (nl) {
