@@ -107,18 +107,17 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
 <button type="button" class="sm" id="pvopen">미리보기</button></div>
 <form method="post" id="f"><input type="hidden" name="tz" id="tz"><input type="hidden" name="body_md" id="body">
 <div class="editor"><div>
-<label>제목</label><input name="subject" value="${h(p.subject)}" maxlength="200" placeholder="제목에도 {{name}} 을 쓸 수 있어요">
-<label>미리보기 문구 (받은편지함에서 제목 옆에 표시)</label><input name="preview" value="${h(p.preview)}" maxlength="300">
-<div class="row"><div class="grow"><label>카테고리</label><select name="category"><option value="">없음</option>${cats.map((x) => `<option ${p.category === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select>
-${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설정</a>에서 카테고리를 만들 수 있어요</span>`}</div>
-<div class="grow"><label>태그 (쉼표로 구분)</label><input name="tags" value="${h(p.tags)}" placeholder="예: 에세이, 일상"></div></div>
-<label>본문</label>
-<div class="tools" id="tools"><button type="button" class="sm" data-fmt="b">굵게</button><button type="button" class="sm" data-fmt="i">기울임</button><button type="button" class="sm" data-fmt="a">링크</button>
+<input name="subject" class="ttl" value="${h(p.subject)}" maxlength="200" placeholder="제목 없음" aria-label="제목">
+<input name="preview" class="sub" value="${h(p.preview)}" maxlength="300" placeholder="미리보기 문구 — 받은편지함에서 제목 옆에 표시됩니다" aria-label="미리보기 문구">
+<div class="props"><span class="pk">분류</span><select name="category"><option value="">없음</option>${cats.map((x) => `<option ${p.category === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select>
+${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설정</a>에서 만들 수 있어요</span>`}
+<span class="pk">태그</span><input name="tags" value="${h(p.tags)}" placeholder="쉼표로 구분 (예: 에세이, 일상)" aria-label="태그"></div>
+<div class="tools" id="tools">
 <select id="merge" class="sm-select"><option value="">메일 머지 ▾</option><option value="{{name}}">{{name}} 닉네임</option><option value="{{name|독자}}">{{name|독자}} 없으면 '독자'</option><option value="{{email}}">{{email}} 이메일</option></select>
 <select id="tplsel" class="sm-select"><option value="">템플릿 ▾</option>${tpls.map((t) => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>
 <button type="button" class="sm" id="savetpl">템플릿으로 저장</button><button type="button" class="sm" id="rawtoggle">마크다운</button></div>
 <div id="blocks" class="blocks"></div><textarea id="raw" hidden rows="24"></textarea>
-<p class="mute">빈 줄에서 <code>/</code>를 입력하면 블록 메뉴가 열립니다. <code>#</code> <code>-</code> <code>1.</code> <code>&gt;</code> <code>---</code> 단축 입력도 지원합니다.</p>
+<p class="mute">빈 줄에서 <code>/</code>로 블록 메뉴 · 글자를 드래그하면 서식 도구 · <code>Ctrl+B</code> 굵게 <code>Ctrl+I</code> 기울임 <code>Ctrl+K</code> 링크 · <code>#</code> <code>-</code> <code>1.</code> <code>&gt;</code> <code>---</code> 단축 입력</p>
 </div>
 <div class="pvcol" id="pvcol" hidden><div class="pvbox"><div class="row" style="margin-bottom:8px"><div class="seg" id="pvmode"><button type="button" class="on" data-m="web">웹</button><button type="button" data-m="email">이메일</button></div>
 <div class="seg" id="pvdev"><button type="button" class="on" data-d="d">데스크톱</button><button type="button" data-d="m">모바일</button></div>

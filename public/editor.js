@@ -244,10 +244,57 @@
     const s = t.selectionStart, e = t.selectionEnd, sel = t.value.slice(s, e) || ph;
     t.setRangeText(open + sel + close, s, e, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); t.focus();
   };
-  $('#tools').addEventListener('click', (e) => {
-    const k = e.target.dataset?.fmt; if (!k) return;
-    if (k === 'b') wrapSel('**', '**', '굵게'); else if (k === 'i') wrapSel('_', '_', '기울임');
+  const format = (k) => {
+    if (k === 'b') wrapSel('**', '**', '굵게'); else if (k === 'i') wrapSel('_', '_', '기울임'); else if (k === 'c') wrapSel('`', '`', '코드');
     else { const u = prompt('링크 주소 (https://…)'); if (u && /^https?:\/\//.test(u)) wrapSel('[', `](${u})`, '링크 텍스트'); }
+  };
+
+  // 글자를 드래그하면 뜨는 서식 도구 (노션의 선택 툴바)
+  const fbar = document.createElement('div'); fbar.className = 'fbar'; fbar.hidden = true;
+  fbar.innerHTML = '<button type="button" data-f="b"><b>B</b></button><button type="button" data-f="i"><i>I</i></button><button type="button" data-f="c">&lt;/&gt;</button><button type="button" data-f="a">링크</button>';
+  document.body.appendChild(fbar);
+  fbar.addEventListener('mousedown', (e) => { e.preventDefault(); const k = e.target.closest('button')?.dataset.f; if (k) { fbar.hidden = true; format(k); } });
+  function showFbar(ta) {
+    if (!ta || ta.selectionStart === ta.selectionEnd || ta.closest('.t-code') || !ta.closest('#blocks')) { fbar.hidden = true; return; }
+    const r = ta.closest('.blk').getBoundingClientRect();
+    fbar.hidden = false;
+    fbar.style.left = Math.max(8, r.left + window.scrollX + 30) + 'px';
+    fbar.style.top = (r.top + window.scrollY - fbar.offsetHeight - 6) + 'px';
+  }
+  document.addEventListener('mouseup', () => setTimeout(() => showFbar(document.activeElement), 0));
+  document.addEventListener('keyup', (e) => { if (e.shiftKey || e.key.startsWith('Arrow')) showFbar(document.activeElement); else if (fbar.hidden === false && document.activeElement.selectionStart === document.activeElement.selectionEnd) fbar.hidden = true; });
+  document.addEventListener('mousedown', (e) => { if (!fbar.contains(e.target)) fbar.hidden = true; });
+  document.addEventListener('input', () => { fbar.hidden = true; });
+  document.addEventListener('paste', () => { fbar.hidden = true; });
+  // 단축키: Ctrl/Cmd + B · I · K
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || !document.activeElement?.closest?.('#blocks')) return;
+    const k = { b: 'b', i: 'i', k: 'a' }[e.key.toLowerCase()]; if (!k) return;
+    e.preventDefault(); lastFocus = document.activeElement; format(k);
+  });
+
+  // 여러 줄 마크다운을 붙여넣으면 블록으로 나눠 넣는다
+  blocksEl.addEventListener('paste', (e) => {
+    const ta = e.target; const t = e.clipboardData?.getData('text/plain') || '';
+    if (ta.tagName !== 'TEXTAREA' || ta.closest('.t-code') || !/\n/.test(t.trim()) || [...(e.clipboardData?.files || [])].length) return;
+    e.preventDefault();
+    const b = blocks[idx(+ta.closest('.blk').dataset.id)]; if (!b) return;
+    const head = ta.value.slice(0, ta.selectionStart), tail = ta.value.slice(ta.selectionEnd);
+    const parsed = parse(t);
+    if (head.trim()) { parsed[0].type === 'p' ? (b.text = head + parsed.shift().text) : (b.text = head); }
+    else if (!tail.trim() && b.type === 'p') { blocks.splice(idx(b.id), 1, ...parsed); changed(); render(parsed[parsed.length - 1].id); return; }
+    if (tail.trim()) parsed.push(mk('p', tail));
+    blocks.splice(idx(b.id) + 1, 0, ...parsed); changed(); render((parsed[parsed.length - 1] || b).id);
+  });
+
+  // 제목에서 Enter/↓ → 본문 첫 블록, 본문 아래 빈 영역 클릭 → 끝에 이어 쓰기
+  subj.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); prev.focus(); } });
+  prev.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); focusBlock(blocks[0].id, false); } });
+  blocksEl.addEventListener('click', (e) => {
+    if (e.target !== blocksEl) return;
+    const last = blocks[blocks.length - 1];
+    if (TEXT.has(last.type) && last.type === 'p' && !last.text) return focusBlock(last.id);
+    const nb = mk('p'); blocks.push(nb); changed(); render(nb.id);
   });
   $('#merge').onchange = (e) => {
     const v = e.target.value; e.target.value = ''; if (!v) return;
