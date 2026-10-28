@@ -1,4 +1,4 @@
-﻿// 글 작성 도구: 블록 에디터 · 자동 저장 · 버전 기록 · 템플릿 · 미리보기 · 예약 · 분류 · 외부 글 가져오기
+// 글 작성 도구: 블록 에디터 · 자동 저장 · 버전 기록 · 템플릿 · 미리보기 · 예약 · 분류 · 외부 글 가져오기
 import { Router } from 'express';
 import express from 'express';
 import { db, now, cleanTags } from './db.js';
@@ -16,13 +16,13 @@ ed.use('/app', requireUser);
 const back = (res, path, m) => res.redirect(m ? path + (path.includes('?') ? '&' : '?') + 'm=' + encodeURIComponent(m) : path);
 const jsonForScript = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), 'g'), '\\u2028').replace(new RegExp(String.fromCharCode(0x2029), 'g'), '\\u2029');
 
-ed.param('nid', (req, res, next, id) => {
-  req.nl = db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+ed.param('nid', async (req, res, next, id) => {
+  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });
 
-const getPost = (req) => db.prepare("SELECT * FROM posts WHERE id=? AND newsletter_id=? AND kind='post'").get(req.params.id, req.nl.id);
+const getPost = async (req) => await db.prepare("SELECT * FROM posts WHERE id=? AND newsletter_id=? AND kind='post'").get(req.params.id, req.nl.id);
 const categoriesOf = (nl) => nl.categories.split(',').map((s) => s.trim()).filter(Boolean);
 const cleanCategory = (nl, v) => (categoriesOf(nl).includes(String(v || '')) ? String(v) : '');
 
@@ -38,38 +38,38 @@ function parseLocal(value, tz) {
 
 // ---------- 버전 기록 ----------
 const same = (a, b) => a && a.subject === b.subject && a.preview === b.preview && a.body_md === b.body_md;
-function snapshot(postId, c, reason, force = false) {
-  const last = db.prepare('SELECT * FROM post_versions WHERE post_id=? ORDER BY id DESC LIMIT 1').get(postId);
+async function snapshot(postId, c, reason, force = false) {
+  const last = await db.prepare('SELECT * FROM post_versions WHERE post_id=? ORDER BY id DESC LIMIT 1').get(postId);
   if (same(last, c)) return false;
   if (!force && reason === 'auto' && last && Date.now() - new Date(last.created_at).getTime() < 120_000) return false; // 자동 저장은 2분에 한 번만 기록
-  db.prepare('INSERT INTO post_versions(post_id,subject,preview,body_md,reason,created_at) VALUES(?,?,?,?,?,?)').run(postId, c.subject, c.preview, c.body_md, reason, now());
-  db.prepare('DELETE FROM post_versions WHERE post_id=? AND id NOT IN (SELECT id FROM post_versions WHERE post_id=? ORDER BY id DESC LIMIT 50)').run(postId, postId);
+  await db.prepare('INSERT INTO post_versions(post_id,subject,preview,body_md,reason,created_at) VALUES(?,?,?,?,?,?)').run(postId, c.subject, c.preview, c.body_md, reason, now());
+  await db.prepare('DELETE FROM post_versions WHERE post_id=? AND id NOT IN (SELECT id FROM post_versions WHERE post_id=? ORDER BY id DESC LIMIT 50)').run(postId, postId);
   return true;
 }
-const hasVersions = (postId) => !!db.prepare('SELECT 1 FROM post_versions WHERE post_id=? LIMIT 1').get(postId);
+const hasVersions = async (postId) => !!await db.prepare('SELECT 1 FROM post_versions WHERE post_id=? LIMIT 1').get(postId);
 
 function content(b) {
   return { subject: String(b.subject || '').trim().slice(0, 200), preview: String(b.preview || '').slice(0, 300), body_md: String(b.body_md || '').slice(0, 500_000) };
 }
 
 // 변경 전 내용을 기록해 두고(처음 저장 시) 새 내용으로 갱신
-function applyContent(p, nl, b) {
+async function applyContent(p, nl, b) {
   const c = content(b);
-  if (!hasVersions(p.id) && (p.subject || p.body_md)) snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'initial', true);
+  if (!await hasVersions(p.id) && (p.subject || p.body_md)) await snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'initial', true);
   const t = now();
-  db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, updated_at=? WHERE id=?')
+  await db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, updated_at=? WHERE id=?')
     .run(c.subject, c.preview, c.body_md, cleanCategory(nl, b.category), cleanTags(b.tags), ['paid', 'free'].includes(b.audience) ? b.audience : 'all', t, p.id);
   return { c, t };
 }
 
 // ================= 글 목록 · 새 글 =================
-ed.get('/app/n/:nid/posts', (req, res) => {
+ed.get('/app/n/:nid/posts', async (req, res) => {
   const nl = req.nl;
   const { c = '', tag = '' } = req.query;
-  let rows = db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' ORDER BY id DESC").all(nl.id);
+  let rows = await db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' ORDER BY id DESC").all(nl.id);
   if (c) rows = rows.filter((p) => p.category === c);
   if (tag) rows = rows.filter((p) => p.tags.split(',').includes(tag));
-  const tpls = db.prepare('SELECT id,name FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
+  const tpls = await db.prepare('SELECT id,name FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
   const cats = categoriesOf(nl);
   res.page('글', `<div class="row"><h1 class="grow">글</h1><a class="btn" href="/app/n/${nl.id}/import">가져오기</a>
 <form method="post" action="/app/n/${nl.id}/posts/new" class="row">${tpls.length ? `<select name="template_id" style="width:auto"><option value="">빈 글</option>${tpls.map((t) => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>` : ''}
@@ -84,22 +84,22 @@ ${cats.length || c || tag ? `<p class="mute">분류: <a href="/app/n/${nl.id}/po
 <p class="mute"><a href="/app/n/${nl.id}/templates">템플릿 관리</a></p>`, { nl, active: 'posts', wide: true, msg: req.query.m });
 });
 
-ed.post('/app/n/:nid/posts/new', (req, res) => {
-  const t = req.body.template_id && db.prepare('SELECT * FROM templates WHERE id=? AND newsletter_id=?').get(req.body.template_id, req.nl.id);
-  const id = Number(db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
-    .run(req.nl.id, t?.subject || '', t?.preview || '', t?.body_md || '', t ? cleanCategory(req.nl, t.category) : '', t?.tags || '', now(), now()).lastInsertRowid);
+ed.post('/app/n/:nid/posts/new', async (req, res) => {
+  const t = req.body.template_id && await db.prepare('SELECT * FROM templates WHERE id=? AND newsletter_id=?').get(req.body.template_id, req.nl.id);
+  const id = Number((await db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(req.nl.id, t?.subject || '', t?.preview || '', t?.body_md || '', t ? cleanCategory(req.nl, t.category) : '', t?.tags || '', now(), now())).lastInsertRowid);
   res.redirect(`/app/n/${req.nl.id}/posts/${id}`);
 });
 
 // ================= 에디터 =================
-ed.get('/app/n/:nid/posts/:id', (req, res) => {
-  const nl = req.nl, p = getPost(req);
+ed.get('/app/n/:nid/posts/:id', async (req, res) => {
+  const nl = req.nl, p = await getPost(req);
   if (!p) return res.redirect(`/app/n/${nl.id}/posts`);
   if (p.status === 'sent' || p.status === 'sending') return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
-  const n = recipientsFor(p).length;
+  const n = (await recipientsFor(p)).length;
   const cats = categoriesOf(nl);
-  const verCount = db.prepare('SELECT COUNT(*) n FROM post_versions WHERE post_id=?').get(p.id).n;
-  const tpls = db.prepare('SELECT id,name,subject,preview,body_md FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
+  const verCount = (await db.prepare('SELECT COUNT(*) n FROM post_versions WHERE post_id=?').get(p.id)).n;
+  const tpls = await db.prepare('SELECT id,name,subject,preview,body_md FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
   const cfg = { nid: nl.id, id: p.id, status: p.status, rev: p.updated_at || '', body_md: p.body_md, scheduled_at: p.scheduled_at || '',
     templates: tpls, sample: { name: req.user.name || '', email: req.user.email }, from: nl.name };
   res.page('글 쓰기', `<div class="row"><h1 class="grow">글 쓰기 <span class="badge ${p.status}">${p.status}</span></h1>
@@ -138,37 +138,37 @@ ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설�
 });
 
 // ---------- 미리보기 (웹 / 이메일) ----------
-ed.post('/app/n/:nid/preview', (req, res) => {
+ed.post('/app/n/:nid/preview', async (req, res) => {
   const b = req.body;
   const post = { id: 0, subject: String(b.subject || ''), preview: String(b.preview || ''), body_md: String(b.body_md || ''), category: cleanCategory(req.nl, b.category),
     tags: cleanTags(b.tags), audience: ['paid', 'free'].includes(b.audience) ? b.audience : 'all' };
   const sample = { name: String(b.sample_name || '').slice(0, 60), email: String(b.sample_email || '').slice(0, 100), token: '' };
   // 이메일 미리보기는 유료 구간까지 모두 보여주는 'test' 모드(실제 발송 모양)
-  res.send(renderPost(post, req.nl, b.mode === 'email' ? { mode: 'test', sub: sample } : { mode: 'web', canRead: true }));
+  res.send(await renderPost(post, req.nl, b.mode === 'email' ? { mode: 'test', sub: sample } : { mode: 'web', canRead: true }));
 });
 
 // ---------- 자동 저장 ----------
-ed.post('/app/n/:nid/posts/:id/autosave', express.json({ limit: '2mb' }), (req, res) => {
-  const p = getPost(req);
+ed.post('/app/n/:nid/posts/:id/autosave', express.json({ limit: '2mb' }), async (req, res) => {
+  const p = await getPost(req);
   if (!p) return res.status(404).json({ error: '글을 찾을 수 없습니다.' });
   if (p.status !== 'draft') return res.status(409).json({ error: '임시 저장 상태에서만 자동 저장됩니다.' });
   if ((req.body.rev || '') !== (p.updated_at || '')) return res.status(409).json({ error: '다른 창에서 이 글이 수정되었습니다. 새로고침해 주세요.', conflict: true });
-  const { c, t } = applyContent(p, req.nl, req.body);
-  const versioned = snapshot(p.id, c, 'auto');
+  const { c, t } = await applyContent(p, req.nl, req.body);
+  const versioned = await snapshot(p.id, c, 'auto');
   res.json({ ok: true, rev: t, at: t, versioned });
 });
 
 // ================= 저장 · 테스트 · 예약 · 발송 =================
 ed.post('/app/n/:nid/posts/:id', async (req, res) => {
-  const nl = req.nl, p = getPost(req);
+  const nl = req.nl, p = await getPost(req);
   if (!p || !['draft', 'scheduled'].includes(p.status)) return res.redirect(`/app/n/${nl.id}/posts`);
   const b = req.body;
   const go = (m) => back(res, `/app/n/${nl.id}/posts/${p.id}`, m);
-  const { c } = applyContent(p, nl, b);
-  snapshot(p.id, c, 'manual', true);
+  const { c } = await applyContent(p, nl, b);
+  await snapshot(p.id, c, 'manual', true);
   const when = parseLocal(b.scheduled_at, b.tz);
-  db.prepare('UPDATE posts SET scheduled_at=? WHERE id=?').run(when, p.id);
-  const fresh = getPost(req);
+  await db.prepare('UPDATE posts SET scheduled_at=? WHERE id=?').run(when, p.id);
+  const fresh = await getPost(req);
   if (['test', 'schedule', 'send'].includes(b.action) && !req.user.verified) return go('이메일 인증 후 발송할 수 있습니다. 상단의 "인증 메일 다시 받기"를 눌러주세요.');
 
   if (b.action === 'test') {
@@ -181,28 +181,29 @@ ed.post('/app/n/:nid/posts/:id', async (req, res) => {
     if (b.action === 'schedule') {
       if (!fresh.scheduled_at) return go('예약 시각을 선택하세요.');
       if (new Date(fresh.scheduled_at) <= new Date(Date.now() + 60_000)) return go('예약 시각은 현재보다 1분 이상 이후여야 합니다.');
-      db.prepare("UPDATE posts SET status='scheduled' WHERE id=?").run(p.id);
+      await db.prepare("UPDATE posts SET status='scheduled' WHERE id=?").run(p.id);
       return back(res, `/app/n/${nl.id}/posts`, `${fmt(fresh.scheduled_at)}에 발송 예약됨`);
     }
-    sendPost(p.id).catch((e) => console.error('발송 오류', e));
+    // 요청 안에서 시간 예산(기본 20초)만큼 먼저 발송하고, 남은 수신자는 주기 작업(크론)이 이어서 보낸다
+    try { await sendPost(p.id); } catch (e) { console.error('발송 오류', e); }
     return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
   }
   // 저장/예약 취소: 예약 상태였다면 초안으로 되돌린다
-  if (fresh.status === 'scheduled') db.prepare("UPDATE posts SET status='draft' WHERE id=?").run(p.id);
+  if (fresh.status === 'scheduled') await db.prepare("UPDATE posts SET status='draft' WHERE id=?").run(p.id);
   go(b.action === 'cancel' ? '예약을 취소했습니다.' : '임시 저장했습니다.');
 });
 
-ed.post('/app/n/:nid/posts/:id/delete', (req, res) => {
-  db.prepare("DELETE FROM posts WHERE id=? AND newsletter_id=? AND status IN ('draft','scheduled')").run(req.params.id, req.nl.id);
+ed.post('/app/n/:nid/posts/:id/delete', async (req, res) => {
+  await db.prepare("DELETE FROM posts WHERE id=? AND newsletter_id=? AND status IN ('draft','scheduled')").run(req.params.id, req.nl.id);
   back(res, `/app/n/${req.nl.id}/posts`, '삭제했습니다.');
 });
 
 // ================= 버전 기록 =================
 const REASON = { auto: '자동 저장', manual: '직접 저장', restore: '복구 직전', initial: '최초 상태' };
-ed.get('/app/n/:nid/posts/:id/versions', (req, res) => {
-  const nl = req.nl, p = getPost(req);
+ed.get('/app/n/:nid/posts/:id/versions', async (req, res) => {
+  const nl = req.nl, p = await getPost(req);
   if (!p) return res.redirect(`/app/n/${nl.id}/posts`);
-  const vs = db.prepare('SELECT * FROM post_versions WHERE post_id=? ORDER BY id DESC').all(p.id);
+  const vs = await db.prepare('SELECT * FROM post_versions WHERE post_id=? ORDER BY id DESC').all(p.id);
   const editable = ['draft', 'scheduled'].includes(p.status);
   res.page('버전 기록', `<h1>버전 기록</h1><p class="mute">${h(p.subject || '(제목 없음)')} · 최근 50개까지 보관됩니다. 복구하면 현재 내용은 "복구 직전" 버전으로 남습니다.</p>
 <div class="card">${vs.length ? vs.map((v, i) => {
@@ -216,19 +217,19 @@ ${editable ? `<form method="post" action="/app/n/${nl.id}/posts/${p.id}/versions
   }).join('') : '<p class="mute">아직 기록이 없습니다. 글을 저장하면 버전이 쌓입니다.</p>'}</div>
 <p><a href="/app/n/${nl.id}/posts/${p.id}">← 에디터로</a></p>`, { nl, active: 'posts', wide: true, msg: req.query.m });
 });
-ed.post('/app/n/:nid/posts/:id/versions/:vid/restore', (req, res) => {
-  const nl = req.nl, p = getPost(req);
-  const v = p && db.prepare('SELECT * FROM post_versions WHERE id=? AND post_id=?').get(req.params.vid, p.id);
+ed.post('/app/n/:nid/posts/:id/versions/:vid/restore', async (req, res) => {
+  const nl = req.nl, p = await getPost(req);
+  const v = p && await db.prepare('SELECT * FROM post_versions WHERE id=? AND post_id=?').get(req.params.vid, p.id);
   if (!p || !v || !['draft', 'scheduled'].includes(p.status)) return back(res, `/app/n/${nl.id}/posts`, '복구할 수 없습니다.');
-  snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'restore', true);
-  db.prepare("UPDATE posts SET subject=?, preview=?, body_md=?, updated_at=?, status='draft' WHERE id=?").run(v.subject, v.preview, v.body_md, now(), p.id);
+  await snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'restore', true);
+  await db.prepare("UPDATE posts SET subject=?, preview=?, body_md=?, updated_at=?, status='draft' WHERE id=?").run(v.subject, v.preview, v.body_md, now(), p.id);
   back(res, `/app/n/${nl.id}/posts/${p.id}`, `${fmt(v.created_at)} 버전으로 복구했습니다.`);
 });
 
 // ================= 템플릿 =================
-ed.get('/app/n/:nid/templates', (req, res) => {
+ed.get('/app/n/:nid/templates', async (req, res) => {
   const nl = req.nl;
-  const rows = db.prepare('SELECT * FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
+  const rows = await db.prepare('SELECT * FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
   res.page('템플릿', `<h1>템플릿</h1><p class="mute">반복해서 쓰는 글 구조를 저장해 두고, 새 글을 만들 때 불러옵니다. 에디터의 "템플릿으로 저장"으로도 추가할 수 있어요.</p>
 <div class="card"><table><tr><th>이름</th><th>제목</th><th>수정</th><th></th></tr>${rows.map((t) => `<tr><td>${h(t.name)}</td><td class="mute">${h(t.subject)}</td><td class="mute">${fmt(t.created_at)}</td>
 <td class="row"><form method="post" action="/app/n/${nl.id}/templates/${t.id}/use" style="margin:0"><button class="sm primary">이 템플릿으로 새 글</button></form>
@@ -236,25 +237,25 @@ ed.get('/app/n/:nid/templates', (req, res) => {
     || '<tr><td colspan="4" class="mute">템플릿이 없습니다.</td></tr>'}</table></div>
 <form method="post" action="/app/n/${nl.id}/templates/defaults"><button>기본 템플릿 3종 추가</button></form>`, { nl, active: 'posts', wide: true, msg: req.query.m });
 });
-ed.post('/app/n/:nid/templates', express.json({ limit: '2mb' }), (req, res) => {
+ed.post('/app/n/:nid/templates', express.json({ limit: '2mb' }), async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: '템플릿 이름을 입력하세요.' });
-  if (db.prepare('SELECT COUNT(*) n FROM templates WHERE newsletter_id=?').get(req.nl.id).n >= 50) return res.status(400).json({ error: '템플릿은 50개까지 만들 수 있습니다.' });
+  if ((await db.prepare('SELECT COUNT(*) n FROM templates WHERE newsletter_id=?').get(req.nl.id)).n >= 50) return res.status(400).json({ error: '템플릿은 50개까지 만들 수 있습니다.' });
   const c = content(req.body);
-  const id = Number(db.prepare('INSERT INTO templates(newsletter_id,name,subject,preview,body_md,category,tags,created_at) VALUES(?,?,?,?,?,?,?,?)')
-    .run(req.nl.id, name, c.subject, c.preview, c.body_md, cleanCategory(req.nl, req.body.category), cleanTags(req.body.tags), now()).lastInsertRowid);
+  const id = Number((await db.prepare('INSERT INTO templates(newsletter_id,name,subject,preview,body_md,category,tags,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(req.nl.id, name, c.subject, c.preview, c.body_md, cleanCategory(req.nl, req.body.category), cleanTags(req.body.tags), now())).lastInsertRowid);
   res.json({ ok: true, id, name, subject: c.subject, preview: c.preview, body_md: c.body_md });
 });
-ed.post('/app/n/:nid/templates/defaults', (req, res) => { addStarterTemplates(req.nl.id); back(res, `/app/n/${req.nl.id}/templates`, '기본 템플릿을 추가했습니다.'); });
-ed.post('/app/n/:nid/templates/:tid/use', (req, res) => {
-  const t =db.prepare('SELECT * FROM templates WHERE id=? AND newsletter_id=?').get(req.params.tid, req.nl.id);
+ed.post('/app/n/:nid/templates/defaults', async (req, res) => { await addStarterTemplates(req.nl.id); back(res, `/app/n/${req.nl.id}/templates`, '기본 템플릿을 추가했습니다.'); });
+ed.post('/app/n/:nid/templates/:tid/use', async (req, res) => {
+  const t =await db.prepare('SELECT * FROM templates WHERE id=? AND newsletter_id=?').get(req.params.tid, req.nl.id);
   if (!t) return back(res, `/app/n/${req.nl.id}/templates`, '템플릿을 찾을 수 없습니다.');
-  const id = Number(db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
-    .run(req.nl.id, t.subject, t.preview, t.body_md, cleanCategory(req.nl, t.category), t.tags, now(), now()).lastInsertRowid);
+  const id = Number((await db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(req.nl.id, t.subject, t.preview, t.body_md, cleanCategory(req.nl, t.category), t.tags, now(), now())).lastInsertRowid);
   res.redirect(`/app/n/${req.nl.id}/posts/${id}`);
 });
-ed.post('/app/n/:nid/templates/:tid/delete', (req, res) => {
-  db.prepare('DELETE FROM templates WHERE id=? AND newsletter_id=?').run(req.params.tid, req.nl.id);
+ed.post('/app/n/:nid/templates/:tid/delete', async (req, res) => {
+  await db.prepare('DELETE FROM templates WHERE id=? AND newsletter_id=?').run(req.params.tid, req.nl.id);
   back(res, `/app/n/${req.nl.id}/templates`, '삭제했습니다.');
 });
 
@@ -284,15 +285,15 @@ ed.post('/app/n/:nid/import/rss', async (req, res) => {
   const nl = req.nl, url = String(req.body.url || '').trim();
   const out = (m) => back(res, `/app/n/${nl.id}/import`, m);
   if (!/^https?:\/\//i.test(url) || url.length > 500) return out('http(s)로 시작하는 올바른 주소를 입력하세요.');
-  if (!cooldown(`import:${req.user.id}`, 5_000)) return out('잠시 후 다시 시도해 주세요.');
+  if (!await cooldown(`import:${req.user.id}`, 5_000)) return out('잠시 후 다시 시도해 주세요.');
   try {
     const items = parseFeed(await fetchSafe(url), url).slice(0, Math.min(50, Math.max(1, Number(req.body.limit) || 20)));
     if (!items.length) return out('가져올 글을 찾지 못했습니다. RSS/Atom 피드 주소가 맞는지 확인하세요.');
     const archive = req.body.mode === 'archive';
     let added = 0, skipped = 0;
     for (const it of items.reverse()) { // 오래된 글부터 넣어 목록 순서를 유지
-      if (it.url && db.prepare('SELECT 1 FROM posts WHERE newsletter_id=? AND source_url=?').get(nl.id, it.url)) { skipped++; continue; }
-      db.prepare('INSERT INTO posts(newsletter_id,subject,body_md,tags,status,sent_at,source_url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
+      if (it.url && await db.prepare('SELECT 1 FROM posts WHERE newsletter_id=? AND source_url=?').get(nl.id, it.url)) { skipped++; continue; }
+      await db.prepare('INSERT INTO posts(newsletter_id,subject,body_md,tags,status,sent_at,source_url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(nl.id, it.title.slice(0, 200), it.body_md.slice(0, 500_000), cleanTags(it.tags.join(',')), archive ? 'sent' : 'draft', archive ? it.date || now() : null, it.url || null, now(), now());
       added++;
     }
@@ -302,11 +303,11 @@ ed.post('/app/n/:nid/import/rss', async (req, res) => {
   }
 });
 
-ed.post('/app/n/:nid/import/paste', (req, res) => {
+ed.post('/app/n/:nid/import/paste', async (req, res) => {
   const raw = String(req.body.body || '').slice(0, 2_000_000);
   const isHtml = /<(p|div|h[1-6]|br|ul|ol|li|a|img|blockquote|strong|em)\b/i.test(raw);
   const body = isHtml ? htmlToMd(raw) : raw;
-  const id = Number(db.prepare('INSERT INTO posts(newsletter_id,subject,body_md,created_at,updated_at) VALUES(?,?,?,?,?)')
-    .run(req.nl.id, String(req.body.subject || '').trim().slice(0, 200), body, now(), now()).lastInsertRowid);
+  const id = Number((await db.prepare('INSERT INTO posts(newsletter_id,subject,body_md,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(req.nl.id, String(req.body.subject || '').trim().slice(0, 200), body, now(), now())).lastInsertRowid);
   res.redirect(`/app/n/${req.nl.id}/posts/${id}`);
 });

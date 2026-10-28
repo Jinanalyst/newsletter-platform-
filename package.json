@@ -1,15 +1,22 @@
 {
-  "name": "personal-newsletter",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/app.js"
-  },
-  "engines": { "node": ">=22.13" },
-  "dependencies": {
-    "express": "^5.1.0",
-    "marked": "^15.0.0",
-    "nodemailer": "^7.0.0"
-  }
+    "name":  "personal-newsletter",
+    "version":  "1.0.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "start":  "node --env-file-if-exists=.env src/app.js",
+                    "dev":  "node --env-file-if-exists=.env src/app.js"
+                },
+    "engines":  {
+                    "node":  "22.x"
+                },
+    "dependencies":  {
+                         "express":  "^5.1.0",
+                         "marked":  "^15.0.0",
+                         "nodemailer":  "^7.0.0",
+                         "pg":  "^8.23.1"
+                     },
+    "devDependencies":  {
+                            "@electric-sql/pglite":  "^0.5.12"
+                        }
 }

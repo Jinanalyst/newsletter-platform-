@@ -1,7 +1,7 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import express from 'express';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { saveImage, isOwnImageUrl } from './storage.js';
 import { db, now, isPaid, dailySendLimit, sentLast24h, cleanTags } from './db.js';
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
@@ -18,26 +18,24 @@ const back = (res, path, m) => res.redirect(m ? path + (path.includes('?') ? '&'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // /app/n/:nid/... 는 소유자만 접근
-dash.param('nid', (req, res, next, id) => {
-  req.nl = db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+dash.param('nid', async (req, res, next, id) => {
+  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });
 
 // ---------- 이미지 업로드 (에디터·로고 공용) ----------
 const TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
-dash.post('/app/upload', express.json({ limit: '6mb' }), (req, res) => {
+// Vercel 은 요청 본문이 4.5MB 로 제한되므로 base64(약 1.33배)를 감안해 이미지는 3MB 까지
+dash.post('/app/upload', express.json({ limit: '4.4mb' }), async (req, res) => {
   const m = /^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/.exec(req.body?.data || '');
   const ext = m && TYPES[m[1]];
   if (!ext) return res.status(400).json({ error: 'PNG/JPG/GIF/WEBP 이미지만 올릴 수 있습니다.' });
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > 4 * 1024 * 1024) return res.status(400).json({ error: '이미지는 4MB 이하여야 합니다.' });
-  mkdirSync('uploads', { recursive: true });
-  const name = `${randomBytes(12).toString('hex')}.${ext}`;
-  writeFileSync(`uploads/${name}`, buf);
-  res.json({ url: `/uploads/${name}` });
+  if (buf.length > 3 * 1024 * 1024) return res.status(400).json({ error: '이미지는 3MB 이하여야 합니다.' });
+  try { res.json({ url: await saveImage(buf, ext, m[1]) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 const uploadJs = `
 async function uploadImage(file){
   const data = await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)});
@@ -46,8 +44,8 @@ async function uploadImage(file){
 }`;
 
 // ---------- 내 뉴스레터 목록 / 개설 ----------
-dash.get('/app', (req, res) => {
-  const list = db.prepare(`SELECT n.*,
+dash.get('/app', async (req, res) => {
+  const list = await db.prepare(`SELECT n.*,
     (SELECT COUNT(*) FROM subscribers s WHERE s.newsletter_id=n.id AND s.status='active') AS subs,
     (SELECT COUNT(*) FROM posts p WHERE p.newsletter_id=n.id AND p.status='sent') AS posts
     FROM newsletters n WHERE owner_id=? ORDER BY id DESC`).all(req.user.id);
@@ -72,15 +70,15 @@ document.getElementById('lf').onchange=async e=>{try{const u=await uploadImage(e
 
 dash.get('/app/new', (req, res) =>
   res.page('새 뉴스레터', `<h1>뉴스레터 개설</h1>${nlForm()}`, { active: 'app', msg: req.query.m }));
-dash.post('/app/new', (req, res) => {
+dash.post('/app/new', async (req, res) => {
   const b = req.body;
   const slug = String(b.slug || '').toLowerCase();
   const name = String(b.name || '').trim();
   if (!name || !/^[a-z0-9][a-z0-9-]{2,29}$/.test(slug)) return res.redirect('/app/new' + note('이름과 올바른 형식의 주소를 입력하세요.'));
-  if (db.prepare('SELECT 1 FROM newsletters WHERE slug=?').get(slug)) return res.redirect('/app/new' + note('이미 사용 중인 주소입니다.'));
-  const id = Number(db.prepare('INSERT INTO newsletters(owner_id,slug,name,description,logo,created_at) VALUES(?,?,?,?,?,?)')
-    .run(req.user.id, slug, name.slice(0, 60), String(b.description || '').slice(0, 300), /^\/uploads\/[\w.]+$/.test(b.logo || '') ? b.logo : '', now()).lastInsertRowid);
-  seedNewsletter(id, name.slice(0, 60)); // 환영 메일(켜짐) + 첫 글 초안을 기본으로 만들어 둔다
+  if (await db.prepare('SELECT 1 FROM newsletters WHERE slug=?').get(slug)) return res.redirect('/app/new' + note('이미 사용 중인 주소입니다.'));
+  const id = Number((await db.prepare('INSERT INTO newsletters(owner_id,slug,name,description,logo,created_at) VALUES(?,?,?,?,?,?)')
+    .run(req.user.id, slug, name.slice(0, 60), String(b.description || '').slice(0, 300), isOwnImageUrl(b.logo) ? b.logo : '', now())).lastInsertRowid);
+  await seedNewsletter(id, name.slice(0, 60)); // 환영 메일(켜짐) + 첫 글 초안을 기본으로 만들어 둔다
   res.redirect(`/app/n/${id}` + note('뉴스레터를 만들었습니다. 아래 체크리스트를 따라 시작해 보세요.'));
 });
 
@@ -90,48 +88,48 @@ dash.get('/app/profile', (req, res) => res.page('프로필', `<h1>프로필</h1>
 <label>이름 (구독자에게 발행자로 표시)</label><input name="name" value="${h(req.user.name)}" maxlength="60">
 <label>소개</label><textarea name="bio" rows="3" maxlength="300" style="font-family:inherit">${h(req.user.bio)}</textarea>
 <p><button class="primary">저장</button></p></form>`, { active: 'profile', msg: req.query.m }));
-dash.post('/app/profile', (req, res) => {
-  db.prepare('UPDATE users SET name=?, bio=? WHERE id=?').run(String(req.body.name || '').trim().slice(0, 60), String(req.body.bio || '').slice(0, 300), req.user.id);
+dash.post('/app/profile', async (req, res) => {
+  await db.prepare('UPDATE users SET name=?, bio=? WHERE id=?').run(String(req.body.name || '').trim().slice(0, 60), String(req.body.bio || '').slice(0, 300), req.user.id);
   back(res, '/app/profile', '저장했습니다.');
 });
 
 // ---------- 대시보드 ----------
-dash.get('/app/n/:nid', (req, res) => {
+dash.get('/app/n/:nid', async (req, res) => {
   const nl = req.nl;
-  const c = (s) => db.prepare('SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND status=?').get(nl.id, s).n;
-  const t = db.prepare(`SELECT COUNT(*) sent, COUNT(l.opened_at) opened FROM send_log l JOIN posts p ON p.id=l.post_id
+  const c = async (s) => (await db.prepare('SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND status=?').get(nl.id, s)).n;
+  const t = await db.prepare(`SELECT COUNT(*) sent, COUNT(l.opened_at) opened FROM send_log l JOIN posts p ON p.id=l.post_id
     WHERE p.newsletter_id=? AND l.error IS NULL`).get(nl.id);
-  const clicked = db.prepare(`SELECT COUNT(DISTINCT c.post_id||'-'||c.subscriber_id) n FROM clicks c JOIN posts p ON p.id=c.post_id WHERE p.newsletter_id=?`).get(nl.id).n;
+  const clicked = (await db.prepare(`SELECT COUNT(DISTINCT c.post_id||'-'||c.subscriber_id) n FROM clicks c JOIN posts p ON p.id=c.post_id WHERE p.newsletter_id=?`).get(nl.id)).n;
   const days = [];
   for (let i = 29; i >= 0; i--) {
     const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
-    days.push([d, db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND status!='pending' AND substr(created_at,1,10)=?").get(nl.id, d).n]);
+    days.push([d, (await db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND status!='pending' AND substr(created_at,1,10)=?").get(nl.id, d)).n]);
   }
   const max = Math.max(1, ...days.map((d) => d[1]));
-  const recent = db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' ORDER BY id DESC LIMIT 5").all(nl.id).map((p) => {
-    const s = db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
-    const k = db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id).n;
+  const recent = await Promise.all((await db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' ORDER BY id DESC LIMIT 5").all(nl.id)).map(async (p) => {
+    const s = await db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
+    const k = (await db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id)).n;
     return `<tr><td><a href="/app/n/${nl.id}/posts/${p.id}">${h(p.subject || '(제목 없음)')}</a></td><td><span class="badge ${p.status}">${p.status}</span></td><td>${s.sent}</td><td>${pct(s.opened, s.sent)}</td><td>${pct(k, s.sent)}</td></tr>`;
-  });
+  }));
   // 시작 체크리스트: 모두 끝나면 사라진다
-  const firstDraft = db.prepare("SELECT id FROM posts WHERE newsletter_id=? AND kind='post' AND status IN ('draft','scheduled') ORDER BY id LIMIT 1").get(nl.id);
+  const firstDraft = await db.prepare("SELECT id FROM posts WHERE newsletter_id=? AND kind='post' AND status IN ('draft','scheduled') ORDER BY id LIMIT 1").get(nl.id);
   const steps = [
     ['이메일 인증', !!req.user.verified, ''],
     ['뉴스레터 소개와 로고 설정', !!(nl.description && nl.logo), `/app/n/${nl.id}/settings`],
-    ['환영 메일 켜기', db.prepare('SELECT COUNT(*) n FROM series WHERE newsletter_id=? AND active=1').get(nl.id).n > 0, `/app/n/${nl.id}/automation`],
-    ['첫 글 발행', db.prepare("SELECT COUNT(*) n FROM posts WHERE newsletter_id=? AND kind='post' AND status='sent'").get(nl.id).n > 0,
+    ['환영 메일 켜기', (await db.prepare('SELECT COUNT(*) n FROM series WHERE newsletter_id=? AND active=1').get(nl.id)).n > 0, `/app/n/${nl.id}/automation`],
+    ['첫 글 발행', (await db.prepare("SELECT COUNT(*) n FROM posts WHERE newsletter_id=? AND kind='post' AND status='sent'").get(nl.id)).n > 0,
       firstDraft ? `/app/n/${nl.id}/posts/${firstDraft.id}` : `/app/n/${nl.id}/posts`],
-    ['구독 링크 공유해 첫 구독자 받기', c('active') > 0, `/app/n/${nl.id}/growth`],
+    ['구독 링크 공유해 첫 구독자 받기', await c('active') > 0, `/app/n/${nl.id}/growth`],
   ];
   const todo = steps.filter((s) => !s[1]).length;
   const checklist = todo ? `<h2>시작하기 · ${steps.length - todo}/${steps.length}</h2><div class="card"><ul class="check">${steps.map(([label, done, href]) =>
     `<li class="${done ? 'done' : ''}"><span class="dot"></span>${done || label === '이메일 인증' ? label : `<a href="${href}">${label}</a>`}${!done && label === '이메일 인증' ? ' <span class="mute">— 메일함의 인증 링크를 눌러주세요</span>' : ''}</li>`).join('')}</ul></div>` : '';
   res.page(nl.name, `<h1>대시보드</h1>${checklist}
 ${smtpConfigured() ? '' : '<div class="msg">SMTP가 설정되지 않아 메일은 <code>outbox/</code> 폴더에 파일로 저장됩니다. 실제 발송은 <code>.env</code>에 SMTP 정보를 입력하세요.</div>'}
-<div class="stats"><div class="stat"><b>${c('active')}</b>구독자</div><div class="stat"><b>${t.sent}</b>총 발송량</div>
+<div class="stats"><div class="stat"><b>${await c('active')}</b>구독자</div><div class="stat"><b>${t.sent}</b>총 발송량</div>
 <div class="stat"><b>${pct(t.opened, t.sent)}</b>열람률</div><div class="stat"><b>${pct(clicked, t.sent)}</b>클릭률</div>
-<div class="stat"><b>${c('pending')}</b>확인 대기</div><div class="stat"><b>${c('unsubscribed')}</b>해지</div>
-<div class="stat"><b>${Math.max(0, dailySendLimit() - sentLast24h(nl.id))}</b>24시간 남은 발송량 (한도 ${dailySendLimit()})</div></div>
+<div class="stat"><b>${await c('pending')}</b>확인 대기</div><div class="stat"><b>${await c('unsubscribed')}</b>해지</div>
+<div class="stat"><b>${Math.max(0, dailySendLimit() - await sentLast24h(nl.id))}</b>24시간 남은 발송량 (한도 ${dailySendLimit()})</div></div>
 <h2>최근 30일 신규 구독</h2><div class="card"><div class="bars">${days.map(([d, n]) => `<i title="${d}: ${n}명" style="height:${Math.max(3, (n / max) * 100)}%"></i>`).join('')}</div></div>
 <div class="row"><h2 class="grow">최근 발행</h2><form method="post" action="/app/n/${nl.id}/posts/new"><button class="primary">+ 새 글</button></form></div>
 <div class="card"><table><tr><th>제목</th><th>상태</th><th>발송</th><th>열람률</th><th>클릭률</th></tr>
@@ -141,15 +139,15 @@ ${recent.join('') || '<tr><td colspan="5" class="mute">아직 글이 없습니�
 });
 
 // 글 목록·에디터·템플릿·가져오기는 editor.js 에서 처리
-const getPost = (req) => db.prepare('SELECT * FROM posts WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
+const getPost = async (req) => await db.prepare('SELECT * FROM posts WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
 
-dash.get('/app/n/:nid/posts/:id/stats', (req, res) => {
-  const nl = req.nl, p = getPost(req);
+dash.get('/app/n/:nid/posts/:id/stats', async (req, res) => {
+  const nl = req.nl, p = await getPost(req);
   if (!p) return res.redirect(`/app/n/${nl.id}/posts`);
-  const tot = db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
-  const failed = db.prepare('SELECT COUNT(*) n FROM send_log WHERE post_id=? AND error IS NOT NULL').get(p.id).n;
-  const uc = db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id).n;
-  const links = db.prepare(`SELECT l.url, COUNT(c.id) clicks, COUNT(DISTINCT c.subscriber_id) uniq FROM links l
+  const tot = await db.prepare('SELECT COUNT(*) sent, COUNT(opened_at) opened FROM send_log WHERE post_id=? AND error IS NULL').get(p.id);
+  const failed = (await db.prepare('SELECT COUNT(*) n FROM send_log WHERE post_id=? AND error IS NOT NULL').get(p.id)).n;
+  const uc = (await db.prepare('SELECT COUNT(DISTINCT subscriber_id) n FROM clicks WHERE post_id=?').get(p.id)).n;
+  const links = await db.prepare(`SELECT l.url, COUNT(c.id) clicks, COUNT(DISTINCT c.subscriber_id) uniq FROM links l
     LEFT JOIN clicks c ON c.link_id=l.id WHERE l.post_id=? GROUP BY l.id ORDER BY clicks DESC`).all(p.id);
   res.page('통계', `<div class="row"><h1 class="grow">${h(p.subject)}</h1><span class="badge ${p.status}">${p.status}</span></div>
 <p class="mute">${p.status === 'sending' ? '발송 중입니다. 새로고침하면 진행 상황이 갱신됩니다.' : '발송: ' + fmt(p.sent_at)}</p>
@@ -163,10 +161,10 @@ dash.get('/app/n/:nid/posts/:id/stats', (req, res) => {
 });
 
 // ---------- 구독자 ----------
-dash.get('/app/n/:nid/subscribers', (req, res) => {
+dash.get('/app/n/:nid/subscribers', async (req, res) => {
   const nl = req.nl;
   const { q = '', status = '' } = req.query;
-  let rows = db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? ORDER BY id DESC').all(nl.id);
+  let rows = await db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? ORDER BY id DESC').all(nl.id);
   if (q) rows = rows.filter((s) => (s.email + s.name).toLowerCase().includes(String(q).toLowerCase()));
   if (status) rows = rows.filter((s) => s.status === status);
   res.page('구독자', `<h1>구독자 <span class="mute">${rows.length}명</span></h1>
@@ -186,38 +184,38 @@ ${rows.length > 500 ? '<p class="mute">상위 500명만 표시됩니다. 검색�
 <p class="mute">구독 동의를 받은 사람만 가져오세요. 바로 활성 상태가 됩니다.</p><p><button class="primary">가져오기</button></p></form></div>`,
   { nl, active: 'subscribers', wide: true, msg: req.query.m });
 });
-dash.get('/app/n/:nid/subscribers/export.csv', (req, res) => {
+dash.get('/app/n/:nid/subscribers/export.csv', async (req, res) => {
   const q = (v) => `"${String(v ?? '').replace(/^[=+\-@]/, "'$&").replace(/"/g, '""')}"`; // CSV 수식 주입 방지
-  const rows = db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? ORDER BY id').all(req.nl.id);
+  const rows = await db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? ORDER BY id').all(req.nl.id);
   res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=subscribers.csv' })
     .send('﻿email,name,status,created_at\n' + rows.map((s) => [s.email, s.name, s.status, s.created_at].map(q).join(',')).join('\n'));
 });
-const addSub = (nid, email, name, source) =>
-  db.prepare("INSERT OR IGNORE INTO subscribers(newsletter_id,email,name,status,token,source,created_at,confirmed_at) VALUES(?,?,?,'active',?,?,?,?)")
-    .run(nid, email, name, randomBytes(18).toString('base64url'), source, now(), now()).changes;
-dash.post('/app/n/:nid/subscribers/add', (req, res) => {
+const addSub = async (nid, email, name, source) =>
+  (await db.prepare("INSERT OR IGNORE INTO subscribers(newsletter_id,email,name,status,token,source,created_at,confirmed_at) VALUES(?,?,?,'active',?,?,?,?)")
+    .run(nid, email, name, randomBytes(18).toString('base64url'), source, now(), now())).changes;
+dash.post('/app/n/:nid/subscribers/add', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return back(res, `/app/n/${req.nl.id}/subscribers`, '이메일 형식 오류');
-  back(res, `/app/n/${req.nl.id}/subscribers`, addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
+  back(res, `/app/n/${req.nl.id}/subscribers`, await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
 });
-dash.post('/app/n/:nid/subscribers/import', (req, res) => {
+dash.post('/app/n/:nid/subscribers/import', async (req, res) => {
   let added = 0;
   for (const line of String(req.body.csv || '').split(/\r?\n/)) {
     const [email, name = ''] = line.split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
-    if (EMAIL_RE.test(email || '')) added += addSub(req.nl.id, email.toLowerCase(), name.slice(0, 80), 'import');
+    if (EMAIL_RE.test(email || '')) added += await addSub(req.nl.id, email.toLowerCase(), name.slice(0, 80), 'import');
   }
   back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.`);
 });
 // 결제 없이 유료 혜택 지정/해제 (후원자·지인 등). 결제 중인 구독자는 해제하지 않는다
-dash.post('/app/n/:nid/subscribers/:id/tier', (req, res) => {
-  const s = db.prepare('SELECT * FROM subscribers WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
+dash.post('/app/n/:nid/subscribers/:id/tier', async (req, res) => {
+  const s = await db.prepare('SELECT * FROM subscribers WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
   let m = '변경했습니다.';
   if (s && isPaid(s) && s.stripe_sub) m = '결제 중인 구독자는 Stripe에서 해지해야 합니다.';
-  else if (s) db.prepare('UPDATE subscribers SET tier=?, paid_until=NULL, plan=? WHERE id=?').run(isPaid(s) ? 'free' : 'paid', '', s.id);
+  else if (s) await db.prepare('UPDATE subscribers SET tier=?, paid_until=NULL, plan=? WHERE id=?').run(isPaid(s) ? 'free' : 'paid', '', s.id);
   back(res, `/app/n/${req.nl.id}/subscribers`, m);
 });
-dash.post('/app/n/:nid/subscribers/:id/delete', (req, res) => {
-  db.prepare('DELETE FROM subscribers WHERE id=? AND newsletter_id=?').run(req.params.id, req.nl.id);
+dash.post('/app/n/:nid/subscribers/:id/delete', async (req, res) => {
+  await db.prepare('DELETE FROM subscribers WHERE id=? AND newsletter_id=?').run(req.params.id, req.nl.id);
   back(res, `/app/n/${req.nl.id}/subscribers`, '삭제했습니다.');
 });
 
@@ -227,18 +225,18 @@ dash.get('/app/n/:nid/settings', (req, res) =>
 <form method="post" action="/app/n/${req.nl.id}/delete" class="card" onsubmit="return confirm('뉴스레터와 모든 글·구독자가 영구 삭제됩니다. 계속할까요?')">
 <b>뉴스레터 삭제</b><p class="mute">모든 글, 구독자, 통계가 영구 삭제됩니다.</p><button class="danger">삭제</button></form>`,
   { nl: req.nl, active: 'settings', msg: req.query.m }));
-dash.post('/app/n/:nid/settings', (req, res) => {
+dash.post('/app/n/:nid/settings', async (req, res) => {
   const b = req.body;
   const name = String(b.name || '').trim();
   if (!name) return back(res, `/app/n/${req.nl.id}/settings`, '이름을 입력하세요.');
-  const logo = /^\/uploads\/[\w.]+$/.test(b.logo || '') ? b.logo : '';
+  const logo = isOwnImageUrl(b.logo) ? b.logo : '';
   const categories = cleanTags(b.categories);
-  db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, req.nl.id);
+  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, req.nl.id);
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
-  db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND instr(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
+  await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
   back(res, `/app/n/${req.nl.id}/settings`, '저장했습니다.');
 });
-dash.post('/app/n/:nid/delete', (req, res) => {
-  db.prepare('DELETE FROM newsletters WHERE id=?').run(req.nl.id);
+dash.post('/app/n/:nid/delete', async (req, res) => {
+  await db.prepare('DELETE FROM newsletters WHERE id=?').run(req.nl.id);
   back(res, '/app', '뉴스레터를 삭제했습니다.');
 });

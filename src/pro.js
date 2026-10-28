@@ -13,21 +13,21 @@ pro.use('/app', requireUser);
 const back = (res, path, m) => res.redirect(m ? path + (path.includes('?') ? '&' : '?') + 'm=' + encodeURIComponent(m) : path);
 const int = (v, max = 100_000_000) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
 
-pro.param('nid', (req, res, next, id) => {
-  req.nl = db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+pro.param('nid', async (req, res, next, id) => {
+  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });
 
 // ================= 수익 관리 =================
-pro.get('/app/n/:nid/revenue', (req, res) => {
+pro.get('/app/n/:nid/revenue', async (req, res) => {
   const nl = req.nl;
-  const paidSubs = db.prepare("SELECT * FROM subscribers WHERE newsletter_id=? AND status='active' AND tier='paid'").all(nl.id).filter(isPaid);
+  const paidSubs = (await db.prepare("SELECT * FROM subscribers WHERE newsletter_id=? AND status='active' AND tier='paid'").all(nl.id)).filter(isPaid);
   const mrr = paidSubs.reduce((a, s) => a + (s.plan === 'yearly' ? nl.price_yearly / 12 : s.plan === 'monthly' ? nl.price_monthly : 0), 0);
-  const tot = db.prepare('SELECT COALESCE(SUM(amount),0) g, COALESCE(SUM(fee),0) f, COUNT(*) n FROM payments WHERE newsletter_id=?').get(nl.id);
-  const months = db.prepare(`SELECT substr(created_at,1,7) m, COUNT(*) n, SUM(amount) g, SUM(fee) f FROM payments
+  const tot = await db.prepare('SELECT COALESCE(SUM(amount),0) g, COALESCE(SUM(fee),0) f, COUNT(*) n FROM payments WHERE newsletter_id=?').get(nl.id);
+  const months = await db.prepare(`SELECT substr(created_at,1,7) m, COUNT(*) n, SUM(amount) g, SUM(fee) f FROM payments
     WHERE newsletter_id=? GROUP BY m ORDER BY m DESC`).all(nl.id);
-  const pays = db.prepare(`SELECT p.*, s.email FROM payments p LEFT JOIN subscribers s ON s.id=p.subscriber_id
+  const pays = await db.prepare(`SELECT p.*, s.email FROM payments p LEFT JOIN subscribers s ON s.id=p.subscriber_id
     WHERE p.newsletter_id=? ORDER BY p.id DESC LIMIT 50`).all(nl.id);
   const method = nl.stripe_account ? '자동 (Stripe Connect)' : '수동 정산 대기';
   res.page('수익', `<h1>수익 관리</h1>
@@ -49,10 +49,10 @@ ${months.map((m) => `<tr><td>${m.m}</td><td>${m.n}</td><td>${won(m.g)}</td><td>$
 ${pays.map((p) => `<tr><td class="mute">${fmt(p.created_at)}</td><td>${h(p.email || '(삭제됨)')}</td><td>${p.plan === 'yearly' ? '연간' : '월간'}</td><td>${won(p.amount)}</td><td>${won(p.fee)}</td></tr>`).join('')
     || '<tr><td colspan="5" class="mute">없음</td></tr>'}</table></div>`, { nl, active: 'revenue', wide: true, msg: req.query.m });
 });
-pro.post('/app/n/:nid/revenue/pricing', (req, res) => {
+pro.post('/app/n/:nid/revenue/pricing', async (req, res) => {
   const acct = String(req.body.stripe_account || '').trim();
   if (acct && !/^acct_[A-Za-z0-9]+$/.test(acct)) return back(res, `/app/n/${req.nl.id}/revenue`, 'Stripe 계정 ID 형식이 올바르지 않습니다.');
-  db.prepare('UPDATE newsletters SET price_monthly=?, price_yearly=?, stripe_account=? WHERE id=?')
+  await db.prepare('UPDATE newsletters SET price_monthly=?, price_yearly=?, stripe_account=? WHERE id=?')
     .run(int(req.body.price_monthly, 10_000_000), int(req.body.price_yearly, 100_000_000), acct, req.nl.id);
   back(res, `/app/n/${req.nl.id}/revenue`, '저장했습니다.');
 });
@@ -60,9 +60,9 @@ pro.post('/app/n/:nid/revenue/pricing', (req, res) => {
 // ================= 자동화 =================
 const COND = { '': '모든 구독자', free: '무료 구독자만', paid: '유료 구독자만' };
 
-pro.get('/app/n/:nid/automation', (req, res) => {
+pro.get('/app/n/:nid/automation', async (req, res) => {
   const nl = req.nl;
-  const list = db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM posts p WHERE p.series_id=s.id AND p.kind='step') steps,
+  const list = await db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM posts p WHERE p.series_id=s.id AND p.kind='step') steps,
     (SELECT COUNT(*) FROM series_enroll e WHERE e.series_id=s.id AND e.done=0) running,
     (SELECT COUNT(*) FROM series_enroll e WHERE e.series_id=s.id AND e.done=1) finished FROM series s WHERE s.newsletter_id=? ORDER BY s.id`).all(nl.id);
   res.page('자동화', `<h1>자동화</h1><p class="mute">구독이 확정되면 자동으로 시작되는 메일 시리즈입니다. 환영 메일은 "즉시(0일)" 단계 하나짜리 시리즈입니다.</p>
@@ -73,23 +73,23 @@ pro.get('/app/n/:nid/automation', (req, res) => {
 <form class="row" method="post" action="/app/n/${nl.id}/automation/series"><input name="name" placeholder="새 시리즈 이름 (예: 입문 5일 코스)" required style="width:280px"><button>+ 시리즈</button></form></div>`,
   { nl, active: 'automation', wide: true, msg: req.query.m });
 });
-pro.post('/app/n/:nid/automation/welcome', (req, res) => {
-  const sid = createWelcome(req.nl.id, req.nl.name);
+pro.post('/app/n/:nid/automation/welcome', async (req, res) => {
+  const sid = await createWelcome(req.nl.id, req.nl.name);
   res.redirect(`/app/n/${req.nl.id}/automation/${sid}`);
 });
-pro.post('/app/n/:nid/automation/series', (req, res) => {
+pro.post('/app/n/:nid/automation/series', async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 60);
   if (!name) return back(res, `/app/n/${req.nl.id}/automation`, '이름을 입력하세요.');
-  const sid = Number(db.prepare('INSERT INTO series(newsletter_id,name,created_at) VALUES(?,?,?)').run(req.nl.id, name, now()).lastInsertRowid);
+  const sid = Number((await db.prepare('INSERT INTO series(newsletter_id,name,created_at) VALUES(?,?,?)').run(req.nl.id, name, now())).lastInsertRowid);
   res.redirect(`/app/n/${req.nl.id}/automation/${sid}`);
 });
 
-const getSeries = (req) => db.prepare('SELECT * FROM series WHERE id=? AND newsletter_id=?').get(req.params.sid, req.nl.id);
+const getSeries = async (req) => await db.prepare('SELECT * FROM series WHERE id=? AND newsletter_id=?').get(req.params.sid, req.nl.id);
 
-pro.get('/app/n/:nid/automation/:sid', (req, res) => {
-  const nl = req.nl, s = getSeries(req);
+pro.get('/app/n/:nid/automation/:sid', async (req, res) => {
+  const nl = req.nl, s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${nl.id}/automation`);
-  const steps = db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
+  const steps = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
   res.page(s.name, `<div class="row"><h1 class="grow">${h(s.name)}</h1>
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}" class="row"><input name="name" value="${h(s.name)}" style="width:200px">
 <label style="margin:0"><input type="checkbox" name="active" value="1" style="width:auto" ${s.active ? 'checked' : ''}> 켜기</label><button class="sm">저장</button></form></div>
@@ -107,45 +107,45 @@ ${steps.map((p, i) => `<form class="card" method="post" action="/app/n/${nl.id}/
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}/delete" onsubmit="return confirm('시리즈와 진행 내역이 삭제됩니다.')" style="margin-top:24px"><button class="danger sm">시리즈 삭제</button></form>
 <p><a href="/app/n/${nl.id}/automation">← 자동화 목록</a></p>`, { nl, active: 'automation', wide: true, msg: req.query.m });
 });
-pro.post('/app/n/:nid/automation/:sid', (req, res) => {
-  const s = getSeries(req);
-  if (s) db.prepare('UPDATE series SET name=?, active=? WHERE id=?').run(String(req.body.name || s.name).trim().slice(0, 60), req.body.active ? 1 : 0, s.id);
+pro.post('/app/n/:nid/automation/:sid', async (req, res) => {
+  const s = await getSeries(req);
+  if (s) await db.prepare('UPDATE series SET name=?, active=? WHERE id=?').run(String(req.body.name || s.name).trim().slice(0, 60), req.body.active ? 1 : 0, s.id);
   back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}`, '저장했습니다.');
 });
-pro.post('/app/n/:nid/automation/:sid/steps', (req, res) => {
-  const s = getSeries(req);
+pro.post('/app/n/:nid/automation/:sid/steps', async (req, res) => {
+  const s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${req.nl.id}/automation`);
-  const pos = (db.prepare("SELECT MAX(step_pos) m FROM posts WHERE series_id=? AND kind='step'").get(s.id).m || 0) + 1;
-  db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
+  const pos = ((await db.prepare("SELECT MAX(step_pos) m FROM posts WHERE series_id=? AND kind='step'").get(s.id)).m || 0) + 1;
+  await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
     .run(req.nl.id, s.id, pos, pos === 1 ? 0 : 3, '', '', now());
   back(res, `/app/n/${req.nl.id}/automation/${s.id}`, '단계를 추가했습니다. 제목과 본문을 채워주세요.');
 });
-pro.post('/app/n/:nid/automation/:sid/steps/:pid', (req, res) => {
-  const s = getSeries(req), b = req.body;
-  if (s) db.prepare("UPDATE posts SET subject=?, body_md=?, step_pos=?, delay_days=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
+pro.post('/app/n/:nid/automation/:sid/steps/:pid', async (req, res) => {
+  const s = await getSeries(req), b = req.body;
+  if (s) await db.prepare("UPDATE posts SET subject=?, body_md=?, step_pos=?, delay_days=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
     .run(String(b.subject || '').trim(), String(b.body_md || ''), int(b.step_pos, 1000), int(b.delay_days, 365), ['free', 'paid'].includes(b.cond) ? b.cond : '', req.params.pid, s.id);
   back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}`, '저장했습니다.');
 });
-pro.post('/app/n/:nid/automation/:sid/steps/:pid/delete', (req, res) => {
-  const s = getSeries(req);
-  if (s) db.prepare("DELETE FROM posts WHERE id=? AND series_id=? AND kind='step'").run(req.params.pid, s.id);
+pro.post('/app/n/:nid/automation/:sid/steps/:pid/delete', async (req, res) => {
+  const s = await getSeries(req);
+  if (s) await db.prepare("DELETE FROM posts WHERE id=? AND series_id=? AND kind='step'").run(req.params.pid, s.id);
   back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}`, '삭제했습니다.');
 });
-pro.post('/app/n/:nid/automation/:sid/delete', (req, res) => {
-  const s = getSeries(req);
+pro.post('/app/n/:nid/automation/:sid/delete', async (req, res) => {
+  const s = await getSeries(req);
   if (s) {
-    db.prepare("DELETE FROM posts WHERE series_id=? AND kind='step'").run(s.id);
-    db.prepare('DELETE FROM series WHERE id=?').run(s.id);
+    await db.prepare("DELETE FROM posts WHERE series_id=? AND kind='step'").run(s.id);
+    await db.prepare('DELETE FROM series WHERE id=?').run(s.id);
   }
   back(res, `/app/n/${req.nl.id}/automation`, '삭제했습니다.');
 });
 
 // ================= 성장 =================
-pro.get('/app/n/:nid/growth', (req, res) => {
+pro.get('/app/n/:nid/growth', async (req, res) => {
   const nl = req.nl, base = baseUrl();
-  const top = db.prepare(`SELECT r.email, COUNT(*) n FROM subscribers s JOIN subscribers r ON r.id=s.referred_by
+  const top = await db.prepare(`SELECT r.email, COUNT(*) n FROM subscribers s JOIN subscribers r ON r.id=s.referred_by
     WHERE s.newsletter_id=? AND s.status='active' GROUP BY r.id ORDER BY n DESC LIMIT 10`).all(nl.id);
-  const total = db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND referred_by IS NOT NULL AND status='active'").get(nl.id).n;
+  const total = (await db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND referred_by IS NOT NULL AND status='active'").get(nl.id)).n;
   const snippet = `<iframe src="${base}/n/${nl.slug}/embed" width="100%" height="190" style="border:0"></iframe>`;
   res.page('성장', `<h1>성장</h1>
 <div class="stats"><div class="stat"><b>${total}</b>추천으로 가입한 구독자</div></div>
@@ -161,8 +161,8 @@ pro.get('/app/n/:nid/growth', (req, res) => {
 <h2>추천 순위</h2><div class="card"><table><tr><th>구독자</th><th>추천 수</th></tr>${top.map((t) => `<tr><td>${h(t.email)}</td><td>${t.n}</td></tr>`).join('')
     || '<tr><td colspan="2" class="mute">아직 없습니다.</td></tr>'}</table></div>`, { nl, active: 'growth', wide: true, msg: req.query.m });
 });
-pro.post('/app/n/:nid/growth/rewards', (req, res) => {
+pro.post('/app/n/:nid/growth/rewards', async (req, res) => {
   const lines = String(req.body.rewards || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /^\d{1,4}:.+/.test(l)).slice(0, 10);
-  db.prepare('UPDATE newsletters SET rewards=? WHERE id=?').run(lines.join('\n').slice(0, 1000), req.nl.id);
+  await db.prepare('UPDATE newsletters SET rewards=? WHERE id=?').run(lines.join('\n').slice(0, 1000), req.nl.id);
   back(res, `/app/n/${req.nl.id}/growth`, '저장했습니다.');
 });

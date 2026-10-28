@@ -1,0 +1,23 @@
+# 예약 발송·시리즈 메일·이어 보내기를 처리하는 주기 작업을 5분마다 호출합니다.
+# (Vercel Hobby 요금제의 Cron 은 하루 1회만 가능해서, 더 자주 돌리기 위해 GitHub Actions 를 사용합니다.
+#  Vercel Pro 이상이면 vercel.json 의 크론 주기를 "*/5 * * * *" 로 바꾸고 이 파일은 지워도 됩니다.)
+# 저장소 Settings → Secrets and variables → Actions 에 APP_URL(예: https://내도메인.vercel.app), CRON_SECRET 을 등록하세요.
+name: tick
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call cron endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then echo "APP_URL / CRON_SECRET secrets are not set"; exit 0; fi
+          curl -fsS -m 90 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron"

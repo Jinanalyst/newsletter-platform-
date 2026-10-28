@@ -1,27 +1,41 @@
 import express from 'express';
-import './db.js';
+import { timingSafeEqual } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { pub } from './public.js';
 import { dash } from './dashboard.js';
 import { pro } from './pro.js';
 import { ed } from './editor.js';
-import { fileURLToPath } from 'node:url';
 import { billing, stripeWebhook } from './billing.js';
 import { loadUser } from './auth.js';
 import { sbRouter, sbEnabled } from './supabase.js';
 import { page } from './views.js';
-import { startScheduler } from './send.js';
+import { startScheduler, tick } from './send.js';
 
 const app = express();
-app.set('trust proxy', 'loopback');
+app.set('trust proxy', process.env.VERCEL ? 1 : 'loopback');
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin' });
   next();
 });
+
 // Stripe 웹훅은 서명 검증을 위해 원본 바이트가 필요하므로 다른 파서보다 먼저 연결
 app.post('/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), stripeWebhook);
-app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: 0, index: false, dotfiles: 'deny' }));
-app.use('/uploads', express.static('uploads', { maxAge: '7d', index: false, dotfiles: 'deny' }));
+
+// 예약 발송·시리즈·이어 보내기를 처리하는 주기 작업. Vercel Cron(또는 외부 스케줄러)이 CRON_SECRET 과 함께 호출한다.
+app.get('/api/cron', async (req, res, next) => {
+  try {
+    const secret = process.env.CRON_SECRET || '';
+    const given = String(req.headers.authorization || '');
+    const want = `Bearer ${secret}`;
+    const okAuth = secret && given.length === want.length && timingSafeEqual(Buffer.from(given), Buffer.from(want));
+    if (!okAuth) return res.status(401).json({ error: 'unauthorized' });
+    res.json({ ok: true, ...(await tick(Number(process.env.CRON_BUDGET_MS || 50_000))) });
+  } catch (e) { next(e); }
+});
+
+app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: '5m', index: false, dotfiles: 'deny' }));
+app.use('/uploads', express.static('uploads', { maxAge: '7d', index: false, dotfiles: 'deny' })); // 로컬 개발용 업로드 폴더
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 app.use(loadUser);
 app.use((req, res, next) => {
@@ -35,8 +49,22 @@ app.use(ed);   // 글 작성 도구 (블록 에디터·템플릿·가져오기)
 app.use(dash);
 app.use(pro);
 
-const port = Number(process.env.PORT || 3000);
-app.listen(port, () => {
-  console.log(`뉴스레터 플랫폼 실행 중 → http://localhost:${port}  (로그인: ${sbEnabled() ? 'Supabase Auth' : '자체 계정'})`);
-  startScheduler();
+app.use((req, res) => res.status(404).page('찾을 수 없음', '<h1>페이지를 찾을 수 없습니다</h1><p><a href="/">홈으로</a></p>'));
+// 처리되지 않은 오류(DB 연결 문제 등): 내부 정보는 숨기고 로그에만 남긴다
+app.use((err, req, res, next) => {
+  console.error('요청 처리 오류', req.method, req.path, err);
+  if (res.headersSent) return next(err);
+  const send = (body) => (res.page ? res.status(500).page('오류', body) : res.status(500).send('서버 오류'));
+  send('<h1>일시적인 오류가 발생했습니다</h1><p>잠시 후 다시 시도해 주세요.</p><p><a href="/">홈으로</a></p>');
 });
+
+export default app;
+
+// 로컬/서버형 호스팅: 직접 실행. Vercel 에서는 api/index.js 가 이 앱을 함수로 노출한다.
+if (!process.env.VERCEL) {
+  const port = Number(process.env.PORT || 3000);
+  app.listen(port, () => {
+    console.log(`뉴스레터 플랫폼 실행 중 → http://localhost:${port}  (로그인: ${sbEnabled() ? 'Supabase Auth' : '자체 계정'}, DB: ${process.env.DATABASE_URL ? 'Postgres' : '로컬 PGlite'})`);
+    startScheduler();
+  });
+}

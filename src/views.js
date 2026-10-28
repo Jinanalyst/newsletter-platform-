@@ -1,4 +1,4 @@
-﻿import { h } from './render.js';
+import { h } from './render.js';
 import { FAVICON } from './landing.js';
 
 const CSS = `

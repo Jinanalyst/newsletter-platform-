@@ -1,13 +1,13 @@
-﻿import { marked } from 'marked';
+import { marked } from 'marked';
 import { db, baseUrl, isPaid, hasPaid } from './db.js';
 
 export const h = (s = '') =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function linkId(postId, url) {
-  const row = db.prepare('SELECT id FROM links WHERE post_id=? AND url=?').get(postId, url);
+async function linkId(postId, url) {
+  const row = await db.prepare('SELECT id FROM links WHERE post_id=? AND url=?').get(postId, url);
   if (row) return row.id;
-  return Number(db.prepare('INSERT INTO links(post_id,url) VALUES(?,?)').run(postId, url).lastInsertRowid);
+  return Number((await db.prepare('INSERT INTO links(post_id,url) VALUES(?,?)').run(postId, url)).lastInsertRowid);
 }
 
 // ---------- 보안: 본문(마크다운) 안의 원시 HTML은 실행하지 않고 글자로 보여준다 ----------
@@ -51,7 +51,7 @@ function gate(md, post, canRead) {
 }
 export const isGated = (post) => post.audience === 'paid' || post.body_md.includes(MARK);
 
-export function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRead = false } = {}) {
+export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRead = false } = {}) {
   const base = baseUrl();
   const readable = mode === 'test' || (mode === 'email' ? isPaid(sub) : canRead);
   const upgrade = `${base}/n/${nl.slug}/upgrade${sub?.token ? `?t=${sub.token}` : ''}`;
@@ -62,8 +62,13 @@ export function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRe
   body = body.replace(/src="\/uploads\//g, `src="${base}/uploads/`);
 
   if (mode === 'email') {
-    body = body.replace(/href="(https?:\/\/[^"]+)"/g, (_, url) =>
-      `href="${base}/t/c/${linkId(post.id, url.replaceAll('&amp;', '&'))}/${tok}"`);
+    // 링크 클릭 추적: 링크마다 ID를 먼저 확보(DB)한 뒤 동기 치환
+    const ids = new Map();
+    for (const m of body.matchAll(/href="(https?:\/\/[^"]+)"/g)) {
+      const u = m[1].replaceAll('&amp;', '&');
+      if (!ids.has(u)) ids.set(u, await linkId(post.id, u));
+    }
+    body = body.replace(/href="(https?:\/\/[^"]+)"/g, (_, url) => `href="${base}/t/c/${ids.get(url.replaceAll('&amp;', '&'))}/${tok}"`);
   }
 
   const chips = [post.category, ...String(post.tags || '').split(',')].filter(Boolean)

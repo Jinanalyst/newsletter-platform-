@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
 import { sendMail } from './mail.js';
@@ -31,18 +31,18 @@ async function stripe(path, params) {
   return j;
 }
 
-const getNl = (slug) => db.prepare('SELECT * FROM newsletters WHERE slug=?').get(slug);
-const activeSub = (nl, token) =>
-  token ? db.prepare("SELECT * FROM subscribers WHERE token=? AND newsletter_id=? AND status='active'").get(String(token), nl.id) : null;
+const getNl = async (slug) => await db.prepare('SELECT * FROM newsletters WHERE slug=?').get(slug);
+const activeSub = async (nl, token) =>
+  token ? await db.prepare("SELECT * FROM subscribers WHERE token=? AND newsletter_id=? AND status='active'").get(String(token), nl.id) : null;
 const gone = (res) => res.status(404).page('없음', '<h1>찾을 수 없습니다</h1><p><a href="/">홈으로</a></p>');
 
 // ---------- 유료 구독 신청 ----------
-billing.get('/n/:slug/upgrade', (req, res) => {
-  const nl = getNl(req.params.slug);
+billing.get('/n/:slug/upgrade', async (req, res) => {
+  const nl = await getNl(req.params.slug);
   if (!nl) return gone(res);
   const back = `<p><a href="/n/${h(nl.slug)}">← ${h(nl.name)}</a></p>`;
   if (!hasPaid(nl)) return res.page('유료 구독', `<h1>${h(nl.name)}</h1><p>이 뉴스레터는 아직 유료 구독을 운영하지 않습니다.</p>${back}`);
-  const sub = activeSub(nl, req.query.t);
+  const sub = await activeSub(nl, req.query.t);
   if (!sub) {
     return res.page('유료 구독', `<h1>유료 구독</h1><p>구독 중인 이메일 주소로 전용 링크를 보내드립니다.</p>
 <form class="card" method="post" action="/n/${h(nl.slug)}/upgrade/link"><label>이메일</label><input type="email" name="email" required>
@@ -62,19 +62,19 @@ ${plan('monthly', nl.price_monthly, '월간', '/ 월')}${plan('yearly', nl.price
 });
 
 // 이메일 열거 방지: 항상 같은 응답
-billing.post('/n/:slug/upgrade/link', (req, res) => {
-  const nl = getNl(req.params.slug);
+billing.post('/n/:slug/upgrade/link', async (req, res) => {
+  const nl = await getNl(req.params.slug);
   if (!nl) return gone(res);
-  const sub = db.prepare("SELECT * FROM subscribers WHERE newsletter_id=? AND email=? AND status='active'").get(nl.id, String(req.body.email || '').trim().toLowerCase());
+  const sub = await db.prepare("SELECT * FROM subscribers WHERE newsletter_id=? AND email=? AND status='active'").get(nl.id, String(req.body.email || '').trim().toLowerCase());
   if (sub) sendMail({ to: sub.email, subject: `[${nl.name}] 유료 구독 링크`, fromName: nl.name,
     html: `<p><a href="${baseUrl()}/n/${h(nl.slug)}/upgrade?t=${sub.token}">유료 구독 페이지 열기</a></p>`, text: `${baseUrl()}/n/${nl.slug}/upgrade?t=${sub.token}` }).catch(() => {});
   res.redirect(`/n/${nl.slug}/upgrade?m=` + encodeURIComponent('구독 중인 주소라면 링크를 메일로 보냈습니다.'));
 });
 
 billing.post('/n/:slug/checkout', async (req, res) => {
-  const nl = getNl(req.params.slug);
+  const nl = await getNl(req.params.slug);
   if (!nl) return gone(res);
-  const sub = activeSub(nl, req.body.t);
+  const sub = await activeSub(nl, req.body.t);
   const plan = req.body.plan === 'yearly' ? 'yearly' : 'monthly';
   const price = plan === 'yearly' ? nl.price_yearly : nl.price_monthly;
   const fail = (m) => res.redirect(`/n/${nl.slug}/upgrade?t=${encodeURIComponent(req.body.t || '')}&m=` + encodeURIComponent(m));
@@ -107,8 +107,8 @@ billing.post('/n/:slug/checkout', async (req, res) => {
 });
 
 billing.post('/n/:slug/billing', async (req, res) => {
-  const nl = getNl(req.params.slug);
-  const sub = nl && activeSub(nl, req.body.t);
+  const nl = await getNl(req.params.slug);
+  const sub = nl && await activeSub(nl, req.body.t);
   if (!sub || !sub.stripe_customer || !stripeConfigured()) return gone(res);
   try {
     const s = await stripe('billing_portal/sessions', { customer: sub.stripe_customer, return_url: `${baseUrl()}/n/${nl.slug}/upgrade?t=${sub.token}` });
@@ -131,37 +131,37 @@ export function verifySignature(raw, header, secret, tolerance = 300) {
 
 const plusDays = (iso, d) => new Date(new Date(iso).getTime() + d * 864e5).toISOString();
 
-export function handleEvent(ev) {
+export async function handleEvent(ev) {
   const o = ev.data.object;
   if (ev.type === 'checkout.session.completed') {
-    const sub = db.prepare('SELECT * FROM subscribers WHERE id=?').get(o.client_reference_id || o.metadata?.subscriber_id);
+    const sub = await db.prepare('SELECT * FROM subscribers WHERE id=?').get(o.client_reference_id || o.metadata?.subscriber_id);
     if (!sub) return;
     const plan = o.metadata?.plan === 'yearly' ? 'yearly' : 'monthly';
     // 정확한 기간은 invoice.paid에서 갱신. 우선 임시로 열어둔다.
-    db.prepare("UPDATE subscribers SET tier='paid', plan=?, stripe_customer=?, stripe_sub=?, paid_until=? WHERE id=?")
+    await db.prepare("UPDATE subscribers SET tier='paid', plan=?, stripe_customer=?, stripe_sub=?, paid_until=? WHERE id=?")
       .run(plan, o.customer || '', o.subscription || '', plusDays(now(), plan === 'yearly' ? 370 : 35), sub.id);
   } else if (ev.type === 'invoice.paid') {
     const subId = o.subscription || o.parent?.subscription_details?.subscription;
     const meta = o.subscription_details?.metadata || o.parent?.subscription_details?.metadata || {};
-    const sub = (subId && db.prepare('SELECT * FROM subscribers WHERE stripe_sub=?').get(subId)) ||
-      (meta.subscriber_id && db.prepare('SELECT * FROM subscribers WHERE id=?').get(meta.subscriber_id));
+    const sub = (subId && await db.prepare('SELECT * FROM subscribers WHERE stripe_sub=?').get(subId)) ||
+      (meta.subscriber_id && await db.prepare('SELECT * FROM subscribers WHERE id=?').get(meta.subscriber_id));
     if (!sub || !(o.amount_paid > 0)) return;
     const end = o.lines?.data?.[0]?.period?.end;
     const until = plusDays(end ? new Date(end * 1000).toISOString() : now(), 3); // 갱신 지연 대비 3일 유예
-    db.prepare("UPDATE subscribers SET tier='paid', paid_until=?, stripe_sub=COALESCE(NULLIF(?,''),stripe_sub), stripe_customer=COALESCE(NULLIF(?,''),stripe_customer) WHERE id=?")
+    await db.prepare("UPDATE subscribers SET tier='paid', paid_until=?, stripe_sub=COALESCE(NULLIF(?,''),stripe_sub), stripe_customer=COALESCE(NULLIF(?,''),stripe_customer) WHERE id=?")
       .run(until, subId || '', o.customer || '', sub.id);
-    db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    await db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?)')
       .run(sub.newsletter_id, sub.id, o.id, meta.plan || sub.plan, o.amount_paid, Math.round((o.amount_paid * feePct()) / 100), o.currency || CURRENCY, now());
   } else if (ev.type === 'customer.subscription.deleted') {
     // 즉시 끊지 않고 이미 낸 기간(paid_until)까지는 유지
-    db.prepare("UPDATE subscribers SET stripe_sub='', plan='' WHERE stripe_sub=?").run(o.id);
+    await db.prepare("UPDATE subscribers SET stripe_sub='', plan='' WHERE stripe_sub=?").run(o.id);
   }
 }
 
-export function stripeWebhook(req, res) {
+export async function stripeWebhook(req, res) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
   if (!secret || !verifySignature(raw, req.headers['stripe-signature'], secret)) return res.status(400).send('bad signature');
-  try { handleEvent(JSON.parse(raw)); } catch (e) { console.error('웹훅 처리 오류', e); return res.status(500).send('error'); }
+  try { await handleEvent(JSON.parse(raw)); } catch (e) { console.error('웹훅 처리 오류', e); return res.status(500).send('error'); }
   res.json({ received: true });
 }
