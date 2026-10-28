@@ -11,6 +11,7 @@ import { seedNewsletter } from './seed.js';
 import { page, fmt, pct } from './views.js';
 import { snsFields, parseSns } from './sns.js';
 import { parseSubscribers } from './csv.js';
+import { cleanLayout } from './layout.js';
 import { viewStats, postViewStats } from './analytics.js';
 
 export const dash = Router();
@@ -280,6 +281,13 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
   await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
   back(res, `/app/n/${req.nl.id}/settings`, rejected ? '저장했습니다. 다만 이미지 주소가 올바르지 않아 기존 이미지를 유지했어요. 다시 업로드해 주세요.' : '저장했습니다.');
+});
+// 공개 페이지의 레이아웃 편집 모드에서 저장 (소유자만: dash.param 이 소유권을 확인한다)
+dash.post('/app/n/:nid/layout', express.json({ limit: '200kb' }), async (req, res) => {
+  const ids = (await db.prepare("SELECT id FROM posts WHERE newsletter_id=? AND kind='post'").all(req.nl.id)).map((p) => p.id);
+  const l = cleanLayout(req.body, ids);
+  await db.prepare('UPDATE newsletters SET layout=? WHERE id=?').run(JSON.stringify(l), req.nl.id);
+  res.json({ ok: true });
 });
 dash.post('/app/n/:nid/delete', async (req, res) => {
   await db.prepare('DELETE FROM newsletters WHERE id=?').run(req.nl.id);
