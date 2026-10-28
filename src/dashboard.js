@@ -60,6 +60,8 @@ ${list.length ? `<div class="grid">${list.map((n) => `<a class="card" href="/app
   { active: 'app', msg: req.query.m });
 });
 
+// 커버 중심 위치: '50% 40%' 형식만 허용
+const coverPos = (v) => { const m = /^(\d{1,3})% (\d{1,3})%$/.exec(String(v || '')); return m ? `${Math.min(100, +m[1])}% ${Math.min(100, +m[2])}%` : '50% 50%'; };
 const nlForm = (nl = {}, isNew = true) => `<form class="card" method="post">
 <label>이름</label><input name="name" value="${h(nl.name || '')}" required maxlength="60">
 ${isNew ? `<label>주소 (영문 소문자·숫자·하이픈, 3~30자)</label><div class="row nowrap"><span class="mute">/n/</span><input name="slug" pattern="[a-z0-9][a-z0-9\-]{2,29}" required placeholder="my-letter"></div>` : ''}
@@ -68,14 +70,21 @@ ${isNew ? `<label>주소 (영문 소문자·숫자·하이픈, 3~30자)</label><
 <label>SNS · 링크 (선택 — 공개 페이지 상단에 아이콘으로 표시됩니다)</label>${snsFields(nl)}
 <label>로고</label><input type="hidden" name="logo" id="logo" value="${h(nl.logo || '')}">
 <div class="row"><img id="lp" class="logo" ${nl.logo ? `src="${h(nl.logo)}"` : 'style="display:none"'} alt=""><input type="file" id="lf" accept="image/png,image/jpeg,image/gif,image/webp" style="width:auto"></div>
-${isNew ? '' : `<label>커버(배경) 이미지 — 공개 페이지 상단 배경과 SNS 공유 미리보기에 쓰입니다 (가로로 긴 이미지 권장)</label><input type="hidden" name="cover" id="cover" value="${h(nl.cover || '')}">
-<div class="row"><img id="cp" ${nl.cover ? `src="${h(nl.cover)}"` : 'style="display:none"'} alt="" style="width:160px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)"><input type="file" id="cf" accept="image/png,image/jpeg,image/gif,image/webp" style="width:auto"><button type="button" class="sm" id="cx">제거</button></div>
+${isNew ? '' : `<label>커버(배경) 이미지 — 공개 페이지 상단 배경과 SNS 공유 미리보기에 쓰입니다 (가로로 긴 이미지 권장)</label><input type="hidden" name="cover" id="cover" value="${h(nl.cover || '')}"><input type="hidden" name="cover_pos" id="cpos" value="${h(coverPos(nl.cover_pos))}">
+<div id="cbox" class="covbox" ${nl.cover ? `style="background-image:url('${h(nl.cover)}');background-position:${h(coverPos(nl.cover_pos))}"` : 'hidden'}><span id="cdot"></span></div>
+<p class="mute" id="chint" ${nl.cover ? '' : 'hidden'}>이미지를 클릭하거나 끌어서, 공개 페이지에서 잘려도 꼭 보여야 할 중심 위치를 정하세요. 가로로 긴 이미지(예: 1600×700)일수록 덜 잘립니다.</p>
+<div class="row"><input type="file" id="cf" accept="image/png,image/jpeg,image/gif,image/webp" style="width:auto"><button type="button" class="sm" id="cx">제거</button></div>
 <label>대표 색상 — 커버가 없을 때 배경과 버튼 색으로 쓰입니다</label><input type="color" name="accent" value="${h(nl.accent || '#3B82F6')}" style="width:64px;height:40px;padding:2px">`}
 <div style="margin-top:28px"><button class="primary">${isNew ? '개설하기' : '저장'}</button></div></form>
 <script>${uploadJs}
 document.getElementById('lf').onchange=async e=>{try{const u=await uploadImage(e.target.files[0]);document.getElementById('logo').value=u;const p=document.getElementById('lp');p.src=u;p.style.display=''}catch(x){alert(x.message)}}
-const cf=document.getElementById('cf');if(cf){cf.onchange=async e=>{try{const u=await uploadImage(e.target.files[0]);document.getElementById('cover').value=u;const p=document.getElementById('cp');p.src=u;p.style.display=''}catch(x){alert(x.message)}};
-document.getElementById('cx').onclick=()=>{document.getElementById('cover').value='';document.getElementById('cp').style.display='none'}}</script>`;
+const cf=document.getElementById('cf');if(cf){cf.onchange=async e=>{try{const u=await uploadImage(e.target.files[0]);document.getElementById('cover').value=u;setPos(50,50);box.style.backgroundImage='url("'+u+'")';box.hidden=false;hint.hidden=false}catch(x){alert(x.message)}};
+document.getElementById('cx').onclick=()=>{document.getElementById('cover').value='';box.hidden=true;hint.hidden=true}}
+var box=document.getElementById('cbox'),hint=document.getElementById('chint'),dot=document.getElementById('cdot'),pos=document.getElementById('cpos');
+function setPos(x,y){x=Math.round(Math.min(100,Math.max(0,x)));y=Math.round(Math.min(100,Math.max(0,y)));pos.value=x+'% '+y+'%';box.style.backgroundPosition=pos.value;dot.style.left=x+'%';dot.style.top=y+'%'}
+if(box){var m=/(\\d+)% (\\d+)%/.exec(pos.value)||[0,50,50];setPos(+m[1],+m[2]);var drag=false;
+function at(e){var r=box.getBoundingClientRect();setPos((e.clientX-r.left)/r.width*100,(e.clientY-r.top)/r.height*100)}
+box.addEventListener('pointerdown',function(e){drag=true;box.setPointerCapture(e.pointerId);at(e)});box.addEventListener('pointermove',function(e){if(drag)at(e)});box.addEventListener('pointerup',function(){drag=false})}</script>`;
 
 dash.get('/app/new', (req, res) =>
   res.page('새 뉴스레터', `<h1>뉴스레터 개설</h1>${nlForm()}`, { active: 'app', msg: req.query.m }));
@@ -262,8 +271,9 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
   const logo = isOwnImageUrl(b.logo) ? b.logo : '';
   const categories = cleanTags(b.categories);
   const cover = isOwnImageUrl(b.cover) ? b.cover : '';
+  const coverP = coverPos(b.cover_pos);
   const accent = /^#[0-9a-f]{6}$/i.test(b.accent || '') ? b.accent : '';
-  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, accent=?, sns=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, accent, parseSns(b), req.nl.id);
+  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, cover_pos=?, accent=?, sns=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, coverP, accent, parseSns(b), req.nl.id);
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
   await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
   back(res, `/app/n/${req.nl.id}/settings`, '저장했습니다.');

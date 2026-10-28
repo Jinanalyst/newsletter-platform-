@@ -79,6 +79,9 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .item:hover{border-color:var(--blue)}
 .dropzone{display:block;border:1.5px dashed var(--line);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;color:var(--mute);margin:0 0 6px;transition:border-color .15s,background .15s}
 .dropzone:hover,.dropzone.on{border-color:var(--blue);background:var(--blue-soft)}
+.covbox{position:relative;width:100%;max-width:560px;aspect-ratio:2/1;border-radius:12px;border:1px solid var(--line);background-size:cover;background-repeat:no-repeat;cursor:crosshair;touch-action:none;margin-top:8px;overflow:hidden}
+.covbox[hidden]{display:none}
+.covbox span{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(15,23,42,.5),0 2px 8px rgba(0,0,0,.4);pointer-events:none}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 14px;font-size:13px;text-decoration:none;transition:border-color .15s}
 .chip:hover{border-color:var(--blue)}

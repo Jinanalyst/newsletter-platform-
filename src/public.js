@@ -169,7 +169,7 @@ pub.get('/n/:slug', async (req, res) => {
   const pageUrl = `${baseUrl()}/n/${nl.slug}`;
   const ogImg = abs(nl.cover || nl.logo);
   const bg = nl.cover
-    ? `linear-gradient(rgba(15,23,42,.5),rgba(15,23,42,.8)),url('${h(nl.cover)}') center/cover`
+    ? `linear-gradient(rgba(15,23,42,.5),rgba(15,23,42,.8)),url('${h(nl.cover)}') ${/^\d{1,3}% \d{1,3}%$/.test(nl.cover_pos || '') ? nl.cover_pos : 'center'}/cover no-repeat`
     : `linear-gradient(135deg,${accent},color-mix(in srgb,${accent} 45%,#0F172A))`;
   const shareText = encodeURIComponent(`${nl.name} — ${nl.description}`.slice(0, 200));
   const lpCss = `<style>
