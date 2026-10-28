@@ -10,6 +10,7 @@ import { sendMail } from './mail.js';
 import { renderPost, h, personalize } from './render.js';
 import { page, fmt } from './views.js';
 import { tr } from './i18n.js';
+import { NOTE_SELECT } from './feed.js';
 import { snsLinks } from './sns.js';
 import { readLayout, applyOrder } from './layout.js';
 import { hashPw, checkPw, login, cookie, tooManyTries, limitHits, requireUser, createToken, checkToken, sendVerification, sendReset, cooldown } from './auth.js';
@@ -26,7 +27,8 @@ pub.get('/', async (req, res) => {
       (SELECT COUNT(*) FROM subscribers s WHERE s.newsletter_id=n.id AND s.status='active') AS subs,
       (SELECT COUNT(*) FROM posts p WHERE p.newsletter_id=n.id AND p.status='sent') AS posts
     FROM newsletters n JOIN users u ON u.id=n.owner_id WHERE u.verified=1 ORDER BY n.id DESC LIMIT 30`).all();
-  res.send(landingPage({ user: req.user, list, lang: req.lang }));
+  const notes = await db.prepare(`SELECT * FROM (${NOTE_SELECT}) x ORDER BY id DESC LIMIT 4`).all(0);
+  res.send(landingPage({ user: req.user, list, notes, lang: req.lang }));
 });
 
 // ---------- 회원: 이메일 가입 / 로그인 / 소셜 ----------

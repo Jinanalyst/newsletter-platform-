@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 5; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 6; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -177,6 +177,27 @@ ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS accent TEXT NOT NULL DEFAULT ''
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS sns TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS cover_pos TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS notes (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_user ON notes(user_id);
+CREATE TABLE IF NOT EXISTS note_likes (
+  id SERIAL PRIMARY KEY,
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE (note_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS note_comments (
+  id SERIAL PRIMARY KEY,
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ncomment_note ON note_comments(note_id, id);
 `;
 
 // ---------- 드라이버 ----------

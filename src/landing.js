@@ -1,6 +1,7 @@
 // 메인 랜딩 페이지 — 컨셉: "누구나 자신의 이야기를 세상에 펼칠 수 있는 공간"
 import { h } from './render.js';
 import { tr, langSwitcher } from './i18n.js';
+import { ago, authorName } from './note-utils.js';
 
 // 브랜드: 네이비 #0F172A · 블루 #3B82F6 · 배경 #F8FAFC · 그레이 #94A3B8
 export const FAVICON = `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#0F172A"/><rect x="11" y="7" width="6.5" height="21" rx="3.2" fill="#fff"/><circle cx="26" cy="27" r="5" fill="#3B82F6"/></svg>')}">`;
@@ -144,6 +145,16 @@ footer a:hover{color:var(--navy)}
 footer .langsw{font-size:13px}footer .langsw b{color:var(--navy);font-weight:600}
 html[lang=ja] body,html[lang=zh] body{word-break:normal}
 .mark{width:26px;height:26px}
+/* 커뮤니티 포스트 */
+.nts{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.nc{display:flex;gap:14px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;transition:transform .18s,box-shadow .18s,border-color .18s}
+.nc:hover{transform:translateY(-3px);border-color:#C7D7F5;box-shadow:0 18px 36px -22px rgba(59,130,246,.5)}
+.nca{width:42px;height:42px;border-radius:50%;flex:0 0 42px;display:grid;place-items:center;color:#fff;font-weight:700}
+.nc .nm{display:flex;gap:8px;align-items:baseline}.nc .nm b{font-size:15.5px}.nc small{color:var(--gray);font-size:13px}
+.nc p{margin:4px 0 10px;color:#334155;font-size:15px;line-height:1.65;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.nc .ct{font-size:13px;color:var(--gray)}
+.sec-cta{margin-top:28px}
+@media(max-width:980px){.nts{grid-template-columns:1fr}}
 @media(max-width:980px){
   .hero .wrap{grid-template-columns:1fr;padding-top:48px;padding-bottom:72px;min-height:0}
   .stack{height:440px;max-width:520px;margin:20px auto 0;width:100%}
@@ -170,7 +181,7 @@ const ICON = {
 const mountain = (c1, c2, c3) => `<svg viewBox="0 0 300 190" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g${c1.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
 <rect width="300" height="190" fill="url(#g${c1.slice(1)})"/><path d="M0 120 90 62l56 46 52-34 102 62v54H0z" fill="${c3}" opacity=".45"/><path d="M0 146 70 100l62 40 70-52 98 70v32H0z" fill="${c3}" opacity=".7"/><rect y="132" width="300" height="60" fill="#fff" opacity=".28"/></svg>`;
 
-export function landingPage({ user, list, lang = 'ko' }) {
+export function landingPage({ user, list, notes = [], lang = 'ko' }) {
   const t = tr(lang);
   const cta = user
     ? `<a class="pill" href="/app">${t('내 뉴스레터로 이동 →')}</a>`
@@ -179,6 +190,9 @@ export function landingPage({ user, list, lang = 'ko' }) {
     ? `<div class="ex">${list.map((n) => `<a class="xc" href="/n/${h(n.slug)}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
 <div><b>${h(n.name)}</b><small>${h(n.owner || t('발행자'))} · ${t('구독자 {n}명 · 글 {p}편', { n: n.subs, p: n.posts })}</small></div></div><p>${h(n.description || t('아직 소개가 없습니다.'))}</p></a>`).join('')}</div>`
     : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 열려 있는 뉴스레터가 없어요.')}</b><br>${t('첫 번째 이야기의 주인공이 되어보세요.')}<br><br><a class="pill sm" href="/signup">${t('뉴스레터 만들기')}</a></div>`;
+  const noteCards = notes.length
+    ? `<div class="nts">${notes.map((n) => `<a class="nc" href="/posts/${n.id}"><span class="nca" style="background:hsl(${(n.user_id * 47) % 360} 55% 46%)">${h([...authorName(n)][0] || '?')}</span><div><div class="nm"><b>${h(authorName(n))}</b><small>${ago(n.created_at, t)}</small></div><p>${h(n.body.slice(0, 180))}</p><div class="ct">♥ ${n.likes} · ${t('댓글')} ${n.comments}</div></div></a>`).join('')}</div>`
+    : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 포스트가 없어요. 첫 글을 남겨 보세요.')}</b></div>`;
   const words = ['에세이', '인터뷰', '큐레이션', '리뷰', '일기', '뉴스', '칼럼', '레시피', '여행기', '투자 노트', '기술 블로그', '육아 일지'];
 
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -187,7 +201,7 @@ export function landingPage({ user, list, lang = 'ko' }) {
 <meta property="og:title" content="${h(t('lett. — 당신의 이야기가 시작되는 곳'))}"><meta property="og:description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.'))}">
 <meta name="theme-color" content="#F8FAFC">${FAVICON}<style>${CSS}</style></head><body>
 <header id="hd"><div class="wrap nav"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a>
-<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="#explore">${t('탐색')}</a></nav><span class="sp"></span>
+<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="/posts">${t('포스트')}</a><a href="#explore">${t('탐색')}</a></nav><span class="sp"></span>
 ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pill sm" href="/app">${t('내 뉴스레터')}</a>` : `<a class="login" href="/login">${t('로그인')}</a><a class="pill sm" href="/signup">${t('시작하기')}</a>`}</div></header>
 
 <main>
@@ -224,7 +238,11 @@ ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pi
 <div class="f"><div class="ic">${ICON.coin}</div><h3>${t('유료 구독')}</h3><p>${t('월간·연간 구독을 열고 유료 전용 글을 발행하세요. 매출과 정산 내역도 한곳에서 확인합니다.')}</p></div>
 <div class="f"><div class="ic">${ICON.import}</div><h3>${t('쉬운 이사')}</h3><p>${t('Substack, Medium, 워드프레스 등 RSS가 있는 곳의 글을 가져오고, 기존 구독자는 CSV로 옮겨오세요.')}</p></div></div></div></section>
 
-<section id="explore"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
+<section id="posts"><div class="wrap"><div class="kicker">COMMUNITY</div><h2>${t('모두의 이야기를 가볍게 나눠요.')}</h2>
+<p class="sub">${t('짧은 생각을 남기고, 좋아요와 댓글로 이야기를 나눠 보세요.')}</p>${noteCards}
+<div class="cta sec-cta"><a class="pill" href="/posts">${t('포스트 전체 보기 →')}</a></div></div></section>
+
+<section id="explore" class="feat"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
 <p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p>${explore}</div></section>
 
 <div class="band"><div class="wrap"><div class="bandin"><h2>${t('오늘, 첫 번째 이야기를')}<br>${t('시작해 보세요.')}</h2><p>${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}</p>
