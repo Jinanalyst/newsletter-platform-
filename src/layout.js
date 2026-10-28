@@ -2,6 +2,8 @@
 export const WIDTHS = ['narrow', 'normal', 'wide'];
 export const VIEWS = ['list', 'grid'];
 export const HEROES = ['compact', 'normal', 'tall'];
+// 상단 배치: stack=소개 위·구독 폼 아래(기본), left=소개 왼쪽·폼 오른쪽, right=폼 왼쪽·소개 오른쪽
+export const SPLITS = ['stack', 'left', 'right'];
 
 export function readLayout(nl) {
   let v = {};
@@ -11,6 +13,7 @@ export function readLayout(nl) {
     width: WIDTHS.includes(v.width) ? v.width : 'normal',
     view: VIEWS.includes(v.view) ? v.view : 'list',
     hero: HEROES.includes(v.hero) ? v.hero : 'normal',
+    split: SPLITS.includes(v.split) ? v.split : 'stack',
     order: ids(v.order),
     hidden: ids(v.hidden),
   };

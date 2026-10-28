@@ -210,6 +210,11 @@ body{background:var(--bg)}
 #lp.lp-w-narrow .lp-hero .in{max-width:520px}#lp.lp-w-wide .lp-hero .in{max-width:760px}
 #lp.lp-h-compact .lp-hero{padding:36px 20px 44px}#lp.lp-h-compact .lp-hero .desc{margin:14px auto 20px}
 #lp.lp-h-tall .lp-hero{padding:120px 20px 140px}
+#lp[class*="lp-s-"]:not(.lp-s-stack) .lp-hero .in{max-width:1000px;display:grid;grid-template-columns:1fr 1fr;gap:20px 56px;align-items:center;text-align:left}
+#lp.lp-w-narrow[class*="lp-s-"]:not(.lp-s-stack) .lp-hero .in{max-width:820px}#lp.lp-w-wide[class*="lp-s-"]:not(.lp-s-stack) .lp-hero .in{max-width:1200px}
+#lp.lp-s-right .lp-act{order:-1}
+#lp:not(.lp-s-stack) .lp-hero .logo{margin:0 0 18px}#lp:not(.lp-s-stack) .lp-hero .desc{margin:18px 0 22px}#lp:not(.lp-s-stack) .lp-sns,#lp:not(.lp-s-stack) .lp-share{justify-content:flex-start}
+@media(max-width:820px){#lp[class*="lp-s-"]:not(.lp-s-stack) .lp-hero .in{display:block;text-align:center;max-width:640px}#lp:not(.lp-s-stack) .lp-hero .logo{margin:0 auto 18px}#lp:not(.lp-s-stack) .lp-hero .desc{margin:22px auto 30px}#lp:not(.lp-s-stack) .lp-sns,#lp:not(.lp-s-stack) .lp-share{justify-content:center}}
 #lp.lp-v-grid .lp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 #lp.lp-v-grid .item{margin:0}
 .item.off{opacity:.45}.item[hidden]{display:none}
@@ -228,11 +233,11 @@ body{background:var(--bg)}
 .lp-main h2{margin-top:0}
 .lp-foot{text-align:center;padding:0 20px 40px}
 </style>`;
-  res.page(nl.name, `<div id="lp" class="lp-w-${lay.width} lp-h-${lay.hero} lp-v-${lay.view}"><header class="lp-hero"><div class="in">
+  res.page(nl.name, `<div id="lp" class="lp-w-${lay.width} lp-h-${lay.hero} lp-v-${lay.view} lp-s-${lay.split}"><header class="lp-hero"><div class="in"><div class="lp-info">
 ${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="" onerror="this.remove()">` : ''}
 <h1>${h(nl.name)}</h1><p class="by">by ${h(nl.owner || t('발행자'))}</p>
 <p class="desc">${h(nl.description)}</p>
-${snsLinks(nl)}
+${snsLinks(nl)}</div><div class="lp-act">
 ${req.query.ref ? `<p class="note">${t('친구의 추천으로 방문하셨네요')}</p>` : ''}${req.query.m ? `<p class="note">${h(req.query.m)}</p>` : ''}${subForm(nl, req.query.ref, false, t)}
 <div class="lp-share"><button type="button" id="lpshare">${t('공유하기')}</button><button type="button" id="lpcopy">${t('링크 복사')}</button>
 <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${shareText}" target="_blank" rel="noopener">X</a>
@@ -247,13 +252,14 @@ ${hasPaid(nl) ? `<p class="mute">${t('유료 구독({price})으로 전용 글을
 ${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id="lpopen">✎ 레이아웃 편집</button>
 <div class="panel" id="lppanel" hidden>
 <div class="grp"><span>너비</span><div class="seg2"><button type="button" data-k="width" data-v="narrow">좁게</button><button type="button" data-k="width" data-v="normal">보통</button><button type="button" data-k="width" data-v="wide">넓게</button></div></div>
+<div class="grp"><span>상단 배치</span><div class="seg2"><button type="button" data-k="split" data-v="stack">위아래</button><button type="button" data-k="split" data-v="left">소개 왼쪽</button><button type="button" data-k="split" data-v="right">소개 오른쪽</button></div></div>
 <div class="grp"><span>상단 높이</span><div class="seg2"><button type="button" data-k="hero" data-v="compact">낮게</button><button type="button" data-k="hero" data-v="normal">보통</button><button type="button" data-k="hero" data-v="tall">높게</button></div></div>
 <div class="grp"><span>글 목록</span><div class="seg2"><button type="button" data-k="view" data-v="list">목록</button><button type="button" data-k="view" data-v="grid">카드</button></div></div>
 <div class="grp"><button type="button" class="save" id="lpsave">저장</button><button type="button" class="cancel" id="lpcancel">취소</button></div>
 <div class="tip">글을 끌어서 순서를 바꾸고(모바일은 ↑↓), 숨기기로 아카이브에서 뺄 수 있어요. 숨겨도 글 주소로는 계속 열립니다.</div></div></div>
-<script>var LAY=${JSON.stringify({ width: lay.width, hero: lay.hero, view: lay.view, nid: nl.id })};
-(function(){var root=document.getElementById('lp'),list=document.getElementById('lplist'),panel=document.getElementById('lppanel'),open=document.getElementById('lpopen'),cur={width:LAY.width,hero:LAY.hero,view:LAY.view},editing=false,drag=null;
-function apply(){root.className='lp-w-'+cur.width+' lp-h-'+cur.hero+' lp-v-'+cur.view;[].forEach.call(panel.querySelectorAll('[data-k]'),function(b){b.classList.toggle('on',cur[b.dataset.k]===b.dataset.v)})}
+<script>var LAY=${JSON.stringify({ width: lay.width, hero: lay.hero, view: lay.view, split: lay.split, nid: nl.id })};
+(function(){var root=document.getElementById('lp'),list=document.getElementById('lplist'),panel=document.getElementById('lppanel'),open=document.getElementById('lpopen'),cur={width:LAY.width,hero:LAY.hero,view:LAY.view,split:LAY.split},editing=false,drag=null;
+function apply(){root.className='lp-w-'+cur.width+' lp-h-'+cur.hero+' lp-v-'+cur.view+' lp-s-'+cur.split;[].forEach.call(panel.querySelectorAll('[data-k]'),function(b){b.classList.toggle('on',cur[b.dataset.k]===b.dataset.v)})}
 function items(){return list?[].slice.call(list.querySelectorAll('.item')):[]}
 function label(it){var b=it.querySelector('[data-a=eye]');if(b)b.textContent=it.classList.contains('off')?'표시':'숨기기'}
 function start(){editing=true;document.body.classList.add('lp-editing');open.hidden=true;panel.hidden=false;apply();
@@ -268,7 +274,7 @@ list.addEventListener('dragover',function(e){if(!drag)return;e.preventDefault();
 list.addEventListener('drop',function(e){if(!drag)return;e.preventDefault();var it=e.target.closest('.item');if(it&&it!==drag){var r=it.getBoundingClientRect(),after=root.classList.contains('lp-v-grid')?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;list.insertBefore(drag,after?it.nextElementSibling:it)}});
 list.addEventListener('dragend',function(){drag=null;items().forEach(function(x){x.classList.remove('over','dn')})})}
 document.getElementById('lpsave').onclick=function(){var b=this;b.disabled=true;b.textContent='저장 중…';
-var its=items();fetch('/app/n/'+LAY.nid+'/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({width:cur.width,hero:cur.hero,view:cur.view,order:its.map(function(i){return +i.dataset.id}),hidden:its.filter(function(i){return i.classList.contains('off')}).map(function(i){return +i.dataset.id})})})
+var its=items();fetch('/app/n/'+LAY.nid+'/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({width:cur.width,hero:cur.hero,view:cur.view,split:cur.split,order:its.map(function(i){return +i.dataset.id}),hidden:its.filter(function(i){return i.classList.contains('off')}).map(function(i){return +i.dataset.id})})})
 .then(function(r){if(!r.ok)throw 0;location.reload()},function(){b.disabled=false;b.textContent='저장';alert('저장하지 못했습니다. 다시 시도해 주세요.')})}})();</script>` : ''}
 <script>
 (function(){var u=${JSON.stringify(pageUrl)},t=${JSON.stringify(nl.name)};
