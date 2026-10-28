@@ -67,7 +67,7 @@ ${isNew ? '' : `<label>글 카테고리 (쉼표로 구분, 최대 10개 — 글�
 ${isNew ? '' : `<label>커버(배경) 이미지 — 공개 페이지 상단 배경과 SNS 공유 미리보기에 쓰입니다 (가로로 긴 이미지 권장)</label><input type="hidden" name="cover" id="cover" value="${h(nl.cover || '')}">
 <div class="row"><img id="cp" ${nl.cover ? `src="${h(nl.cover)}"` : 'style="display:none"'} alt="" style="width:160px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)"><input type="file" id="cf" accept="image/png,image/jpeg,image/gif,image/webp" style="width:auto"><button type="button" class="sm" id="cx">제거</button></div>
 <label>대표 색상 — 커버가 없을 때 배경과 버튼 색으로 쓰입니다</label><input type="color" name="accent" value="${h(nl.accent || '#3B82F6')}" style="width:64px;height:40px;padding:2px">`}
-<p><button class="primary">${isNew ? '개설하기' : '저장'}</button></p></form>
+<div style="margin-top:28px"><button class="primary">${isNew ? '개설하기' : '저장'}</button></div></form>
 <script>${uploadJs}
 document.getElementById('lf').onchange=async e=>{try{const u=await uploadImage(e.target.files[0]);document.getElementById('logo').value=u;const p=document.getElementById('lp');p.src=u;p.style.display=''}catch(x){alert(x.message)}}
 const cf=document.getElementById('cf');if(cf){cf.onchange=async e=>{try{const u=await uploadImage(e.target.files[0]);document.getElementById('cover').value=u;const p=document.getElementById('cp');p.src=u;p.style.display=''}catch(x){alert(x.message)}};

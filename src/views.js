@@ -33,6 +33,7 @@ p{margin:0 0 14px}
 code{font:12.5px ui-monospace,Consolas,monospace;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
 .mute{color:var(--mute);font-size:13.5px}
 .card{border:1px solid var(--line);border-radius:16px;padding:24px;margin:16px 0;background:var(--card)}
+form p:has(>button.primary:only-child){margin-top:26px}
 input,select,textarea{width:100%;font:inherit;font-size:14.5px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;transition:border-color .15s,box-shadow .15s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 18%,transparent)}
 input[type=checkbox]{width:auto;accent-color:var(--blue)}
