@@ -39,6 +39,8 @@ app.get('/api/cron', async (req, res, next) => {
 app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: '5m', index: false, dotfiles: 'deny' }));
 app.use('/uploads', express.static('uploads', { maxAge: '7d', index: false, dotfiles: 'deny' })); // 로컬 개발용 업로드 폴더
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+// Express 5 는 본문이 없는 POST(예: 입력칸 없는 "새 글" 버튼)에서 req.body 를 undefined 로 둔다 → 핸들러가 req.body.x 로 터지지 않게 빈 객체로
+app.use((req, res, next) => { req.body ??= {}; next(); });
 app.use(loadUser);
 app.use(langMiddleware);
 app.get('/lang/:code', langRoute);
