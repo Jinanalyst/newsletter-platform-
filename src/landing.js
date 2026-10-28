@@ -56,7 +56,49 @@ h1 em{font-style:normal;color:var(--blue)}
 .pc.c{left:15%;top:26px;width:330px;transform:rotate(-5deg);z-index:2;animation:fl 10s ease-in-out -6s infinite}
 .pc.c .img{height:190px}
 @keyframes fl{0%,100%{translate:0 0}50%{translate:0 -10px}}
-@media(prefers-reduced-motion:reduce){.pc{animation:none!important}html{scroll-behavior:auto}}
+/* 모션: 배경 블롭 · 헤드라인 등장 · 카드 패럴랙스 · 떠다니는 뱃지 · 종이비행기 · 마퀴 · 스크롤 등장 */
+.hero .wrap{position:relative;z-index:1}
+.blobs{position:absolute;inset:0;pointer-events:none}
+.blobs i{position:absolute;border-radius:50%;filter:blur(64px);opacity:.55;animation:drift 18s ease-in-out infinite alternate}
+.blobs i:nth-child(1){width:380px;height:380px;background:#BFD4FF;left:-90px;top:-70px}
+.blobs i:nth-child(2){width:320px;height:320px;background:#D9CCFF;right:6%;top:38%;animation-delay:-6s}
+.blobs i:nth-child(3){width:260px;height:260px;background:#C4F0E6;left:40%;bottom:-130px;animation-delay:-11s}
+@keyframes drift{to{transform:translate(70px,46px) scale(1.18)}}
+.rise{animation:rise .9s cubic-bezier(.2,.8,.2,1) var(--d,0s) both}
+@keyframes rise{from{opacity:0;transform:translateY(28px)}}
+h1 .ln{display:block}
+h1 em{display:inline-block;background:linear-gradient(90deg,#3B82F6,#8B5CF6,#06B6D4,#3B82F6);background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 6s linear infinite}
+@keyframes shine{to{background-position:-240% 0}}
+.pc{transition:transform .3s ease-out}
+.pc.a{transform:rotate(-7deg) translate(calc(var(--mx,0)*-16px),calc(var(--my,0)*-10px));animation:pop .9s cubic-bezier(.2,.8,.2,1) .35s both,fl 9s ease-in-out infinite}
+.pc.b{transform:rotate(8deg) translate(calc(var(--mx,0)*18px),calc(var(--my,0)*-12px));animation:pop .9s cubic-bezier(.2,.8,.2,1) .5s both,fl 11s ease-in-out -3s infinite}
+.pc.c{transform:rotate(-5deg) translate(calc(var(--mx,0)*8px),calc(var(--my,0)*8px));animation:pop .9s cubic-bezier(.2,.8,.2,1) .2s both,fl 10s ease-in-out -6s infinite}
+@keyframes pop{from{opacity:0;scale:.88;translate:0 36px}}
+.bdg{position:absolute;z-index:3;background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-size:13px;color:#475569;box-shadow:0 16px 34px -16px rgba(30,58,138,.45);white-space:nowrap;animation:pop .8s cubic-bezier(.2,.8,.2,1) 1s both,fl 7s ease-in-out infinite}
+.bdg b{color:var(--blue);font-weight:700}
+.bdg.x{left:-4%;bottom:70px}.bdg.y{right:0;bottom:24px;animation-delay:1.2s,-2s}
+.bdg::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#22C55E;margin-right:8px;box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:ping 2s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 9px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.plane{position:absolute;left:0;top:0;width:34px;height:34px;z-index:4;offset-path:path('M -30 420 C 110 330, 200 450, 320 330 S 500 150, 580 10');offset-rotate:auto;animation:fly 8s ease-in-out 1.4s infinite;opacity:0;filter:drop-shadow(0 6px 8px rgba(59,130,246,.35))}
+@keyframes fly{0%{offset-distance:0%;opacity:0}8%{opacity:1}88%{opacity:1}100%{offset-distance:100%;opacity:0}}
+.mq{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff;padding:18px 0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent)}
+.mqt{display:flex;gap:44px;width:max-content;animation:mq 34s linear infinite;font-size:17px;font-weight:600;color:#94A3B8;letter-spacing:-.02em}
+.mqt span::after{content:'✦';margin-left:44px;color:#BFD4FF}
+.mq:hover .mqt{animation-play-state:paused}
+@keyframes mq{to{transform:translateX(-50%)}}
+.js .rv{opacity:0;transform:translateY(26px);transition:opacity .7s ease var(--d,0s),transform .7s cubic-bezier(.2,.8,.2,1) var(--d,0s)}
+.js .rv.in{opacity:1;transform:none}
+.step{transition:transform .2s,box-shadow .2s,border-color .2s}
+.step:hover{transform:translateY(-4px);border-color:#C7D7F5;box-shadow:0 20px 40px -26px rgba(59,130,246,.5)}
+.f .ic{transition:transform .25s,background .2s,color .2s}
+.f:hover .ic{background:var(--blue);color:#fff;transform:rotate(-8deg) scale(1.1)}
+.bandin::after{content:'';position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(139,92,246,.35),rgba(139,92,246,0));left:-120px;bottom:-200px;animation:drift 16s ease-in-out infinite alternate}
+.bandin::before{animation:drift 14s ease-in-out infinite alternate-reverse}
+.bandin .pill{animation:ring 2.6s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}70%,100%{box-shadow:0 0 0 16px rgba(255,255,255,0)}}
+@media(max-width:980px){.plane{display:none}.bdg.x{left:2%}}
+@media(max-width:560px){.bdg{display:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}.js .rv{opacity:1;transform:none}.plane{display:none}}
 /* 섹션 공통 */
 section{padding:112px 0}
 .kicker{font-size:14px;font-weight:600;color:var(--blue);margin-bottom:14px}
@@ -144,17 +186,21 @@ export function landingPage({ user, list }) {
 ${user ? '<a class="login" href="/app/profile">프로필</a><a class="pill sm" href="/app">내 뉴스레터</a>' : '<a class="login" href="/login">로그인</a><a class="pill sm" href="/signup">시작하기</a>'}</div></header>
 
 <main>
-<div class="hero"><div class="wrap"><div>
-<span class="eyebrow">글쓰기부터 발송, 구독자 관리까지 한 곳에서</span>
-<h1>당신의 이야기가<br><em>시작되는 곳.</em></h1>
-<p class="lead">누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.<br>뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.</p>
-<div class="cta">${cta}</div><p class="note">무료로 시작할 수 있어요 · 카드 등록 없이 바로 만들기</p></div>
-<div class="stack" aria-hidden="true">
+<div class="hero" id="hero"><div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div><div class="wrap"><div>
+<span class="eyebrow rise">글쓰기부터 발송, 구독자 관리까지 한 곳에서</span>
+<h1><span class="ln rise" style="--d:.1s">당신의 이야기가</span><span class="ln rise" style="--d:.25s"><em>시작되는 곳.</em></span></h1>
+<p class="lead rise" style="--d:.4s">누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.<br>뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.</p>
+<div class="cta rise" style="--d:.55s">${cta}</div><p class="note rise" style="--d:.7s">무료로 시작할 수 있어요 · 카드 등록 없이 바로 만들기</p></div>
+<div class="stack" id="stack" aria-hidden="true">
+<svg class="plane" viewBox="0 0 34 34"><path d="M3 17 31 4 24 30 17 20z" fill="#3B82F6"/><path d="M17 20 31 4 14 15z" fill="#93C5FD"/></svg>
+<div class="bdg x"><b>+128</b> 새 구독자</div><div class="bdg y">이번 주 열람률 <b>62%</b></div>
 <div class="pc a"><div class="img">${mountain('#DBE4F2', '#EEF2F8', '#5B6B86')}</div><div class="bd"><div class="t">이번 주 도시 산책</div><p>걷다 보면 보이는 것들</p></div></div>
 <div class="pc b"><div class="img">${mountain('#D7EBDD', '#EEF6F0', '#3C7B5A')}</div><div class="bd"><div class="t">주말의 식물 일기</div><p>작은 화분에서 배운 것</p></div></div>
 <div class="pc c"><div class="img">${mountain('#C9D6EA', '#E8EEF7', '#64748B')}</div><div class="bd"><div class="t">월요일 아침, 한 가지 생각</div>
 <div class="by"><span class="av"></span>발행자 · 주간 뉴스레터</div><p>이번 주에 마음에 남은 이야기를 천천히 정리했어요. 함께 생각해 보실래요?</p>
 <div class="ft"><span><b>●</b> 이메일로 발송</span><span>웹에도 게시</span></div></div></div></div></div></div>
+
+<div class="mq" aria-hidden="true"><div class="mqt">${[...Array(2)].map(() => ['에세이', '인터뷰', '큐레이션', '리뷰', '일기', '뉴스', '칼럼', '레시피', '여행기', '투자 노트', '기술 블로그', '육아 일지'].map((w) => `<span>${w}</span>`).join('')).join('')}</div></div>
 
 <section id="how"><div class="wrap"><div class="kicker">HOW IT WORKS</div><h2>쓰고, 보내고, 키우세요.</h2>
 <p class="sub">복잡한 설정 없이 세 단계면 충분합니다. 나머지는 lett.가 맡을게요.</p>
@@ -182,6 +228,18 @@ ${user ? '<a class="login" href="/app/profile">프로필</a><a class="pill sm" h
 
 <footer><div class="wrap"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>당신의 이야기가 시작되는 곳</span><span class="sp"></span>
 ${user ? '<a href="/app">내 뉴스레터</a>' : '<a href="/login">로그인</a><a href="/signup">시작하기</a>'}</div></footer>
-<script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f()</script>
+<script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f();
+(function(){var rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+// 스크롤 등장: 같은 묶음 안에서는 순서대로 조금씩 늦게
+document.querySelectorAll('.steps,.fg,.ex').forEach(function(g){[].forEach.call(g.children,function(c,i){c.style.setProperty('--d',i*.08+'s')})});
+var els=document.querySelectorAll('.kicker,section h2,.sub,.step,.f,.xc,.empty,.bandin');
+if(!rm&&'IntersectionObserver' in window){document.documentElement.classList.add('js');
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;var el=e.target;el.classList.add('in');io.unobserve(el);setTimeout(function(){el.classList.remove('rv','in');el.style.removeProperty('--d')},1400)})},{threshold:.15,rootMargin:'0px 0px -40px 0px'});
+els.forEach(function(el){el.classList.add('rv');io.observe(el)})}
+// 히어로 카드 패럴랙스
+var hero=document.getElementById('hero'),st=document.getElementById('stack');
+if(!rm&&matchMedia('(hover:hover)').matches){hero.addEventListener('pointermove',function(e){var r=hero.getBoundingClientRect();st.style.setProperty('--mx',((e.clientX-r.left)/r.width-.5)*2);st.style.setProperty('--my',((e.clientY-r.top)/r.height-.5)*2)});
+hero.addEventListener('pointerleave',function(){st.style.setProperty('--mx',0);st.style.setProperty('--my',0)})}
+})()</script>
 </body></html>`;
 }
