@@ -9,6 +9,7 @@ import { smtpConfigured } from './mail.js';
 import { requireUser } from './auth.js';
 import { seedNewsletter } from './seed.js';
 import { page, fmt, pct } from './views.js';
+import { snsFields, parseSns } from './sns.js';
 import { viewStats, postViewStats } from './analytics.js';
 
 export const dash = Router();
@@ -62,7 +63,8 @@ const nlForm = (nl = {}, isNew = true) => `<form class="card" method="post">
 <label>이름</label><input name="name" value="${h(nl.name || '')}" required maxlength="60">
 ${isNew ? `<label>주소 (영문 소문자·숫자·하이픈, 3~30자)</label><div class="row nowrap"><span class="mute">/n/</span><input name="slug" pattern="[a-z0-9][a-z0-9\-]{2,29}" required placeholder="my-letter"></div>` : ''}
 <label>소개</label><textarea name="description" rows="3" maxlength="300" style="font-family:inherit">${h(nl.description || '')}</textarea>
-${isNew ? '' : `<label>글 카테고리 (쉼표로 구분, 최대 10개 — 글마다 하나를 고르고 공개 아카이브에서 필터로 쓰입니다)</label><input name="categories" value="${h(nl.categories || '')}" placeholder="예: 에세이, 인터뷰, 공지">`}
+<label>글 카테고리 (쉼표로 구분, 최대 10개 — 글마다 하나를 고르고 공개 아카이브에서 필터로 쓰입니다)</label><input name="categories" value="${h(nl.categories || '')}" placeholder="예: 에세이, 인터뷰, 공지">
+<label>SNS · 링크 (선택 — 공개 페이지 상단에 아이콘으로 표시됩니다)</label>${snsFields(nl)}
 <label>로고</label><input type="hidden" name="logo" id="logo" value="${h(nl.logo || '')}">
 <div class="row"><img id="lp" class="logo" ${nl.logo ? `src="${h(nl.logo)}"` : 'style="display:none"'} alt=""><input type="file" id="lf" accept="image/png,image/jpeg,image/gif,image/webp" style="width:auto"></div>
 ${isNew ? '' : `<label>커버(배경) 이미지 — 공개 페이지 상단 배경과 SNS 공유 미리보기에 쓰입니다 (가로로 긴 이미지 권장)</label><input type="hidden" name="cover" id="cover" value="${h(nl.cover || '')}">
@@ -82,8 +84,8 @@ dash.post('/app/new', async (req, res) => {
   const name = String(b.name || '').trim();
   if (!name || !/^[a-z0-9][a-z0-9-]{2,29}$/.test(slug)) return res.redirect('/app/new' + note('이름과 올바른 형식의 주소를 입력하세요.'));
   if (await db.prepare('SELECT 1 FROM newsletters WHERE slug=?').get(slug)) return res.redirect('/app/new' + note('이미 사용 중인 주소입니다.'));
-  const id = Number((await db.prepare('INSERT INTO newsletters(owner_id,slug,name,description,logo,created_at) VALUES(?,?,?,?,?,?)')
-    .run(req.user.id, slug, name.slice(0, 60), String(b.description || '').slice(0, 300), isOwnImageUrl(b.logo) ? b.logo : '', now())).lastInsertRowid);
+  const id = Number((await db.prepare('INSERT INTO newsletters(owner_id,slug,name,description,logo,categories,sns,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(req.user.id, slug, name.slice(0, 60), String(b.description || '').slice(0, 300), isOwnImageUrl(b.logo) ? b.logo : '', cleanTags(b.categories), parseSns(b), now())).lastInsertRowid);
   await seedNewsletter(id, name.slice(0, 60)); // 환영 메일(켜짐) + 첫 글 초안을 기본으로 만들어 둔다
   res.redirect(`/app/n/${id}` + note('뉴스레터를 만들었습니다. 아래 체크리스트를 따라 시작해 보세요.'));
 });
@@ -250,7 +252,7 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
   const categories = cleanTags(b.categories);
   const cover = isOwnImageUrl(b.cover) ? b.cover : '';
   const accent = /^#[0-9a-f]{6}$/i.test(b.accent || '') ? b.accent : '';
-  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, accent=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, accent, req.nl.id);
+  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, accent=?, sns=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, accent, parseSns(b), req.nl.id);
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
   await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
   back(res, `/app/n/${req.nl.id}/settings`, '저장했습니다.');

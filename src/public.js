@@ -9,6 +9,7 @@ import { won } from './billing.js';
 import { sendMail } from './mail.js';
 import { renderPost, h, personalize } from './render.js';
 import { page, fmt } from './views.js';
+import { snsLinks } from './sns.js';
 import { hashPw, checkPw, login, cookie, tooManyTries, limitHits, requireUser, createToken, checkToken, sendVerification, sendReset, cooldown } from './auth.js';
 
 export const pub = Router();
@@ -161,7 +162,7 @@ pub.get('/n/:slug', async (req, res) => {
   if (ft) posts = posts.filter((p) => p.tags.split(',').includes(ft));
   const cats = nl.categories.split(',').filter(Boolean);
   const filterBar = cats.length || fc || ft
-    ? `<p class="mute"><a href="/n/${h(nl.slug)}"${!fc && !ft ? ' style="font-weight:600"' : ''}>전체</a>${cats.map((x) => ` · <a href="?c=${encodeURIComponent(x)}"${x === fc ? ' style="font-weight:600"' : ''}>${h(x)}</a>`).join('')}${ft ? ` · #${h(ft)}` : ''}</p>` : '';
+    ? `<div class="chips"><a class="chip${!fc && !ft ? ' on' : ''}" href="/n/${h(nl.slug)}">전체</a>${cats.map((x) => `<a class="chip${x === fc ? ' on' : ''}" href="?c=${encodeURIComponent(x)}">${h(x)}</a>`).join('')}${ft ? `<a class="chip on" href="/n/${h(nl.slug)}">#${h(ft)} ✕</a>` : ''}</div>` : '';
   await recordView(req, nl, 0, 0);
   const accent = /^#[0-9a-f]{6}$/i.test(nl.accent) ? nl.accent : '#3B82F6';
   const abs = (u) => (!u ? '' : /^https?:/i.test(u) ? u : baseUrl() + u);
@@ -182,6 +183,10 @@ body{background:var(--bg)}
 .lp-hero form.card{text-align:left;margin:0;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}
 .lp-hero .primary{background:${accent};border-color:${accent};color:#fff}
 .lp-hero .note{opacity:.85;font-size:14px;margin:0 0 14px}
+.lp-sns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:-8px 0 26px}
+.lp-sns a{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);transition:background .15s,transform .15s}
+.lp-sns a:hover{background:rgba(255,255,255,.3);transform:translateY(-2px)}
+.lp-sns svg{width:20px;height:20px}
 .lp-share{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:22px}
 .lp-share a,.lp-share button{border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:7px 16px;font-size:13px;text-decoration:none;cursor:pointer}
 .lp-share a:hover,.lp-share button:hover{background:rgba(255,255,255,.25)}
@@ -193,6 +198,7 @@ body{background:var(--bg)}
 ${nl.logo ? `<img class="logo" src="${h(nl.logo)}" alt="">` : ''}
 <h1>${h(nl.name)}</h1><p class="by">by ${h(nl.owner || '발행자')}</p>
 <p class="desc">${h(nl.description)}</p>
+${snsLinks(nl)}
 ${req.query.ref ? '<p class="note">친구의 추천으로 방문하셨네요</p>' : ''}${req.query.m ? `<p class="note">${h(req.query.m)}</p>` : ''}${subForm(nl, req.query.ref)}
 <div class="lp-share"><button type="button" id="lpshare">공유하기</button><button type="button" id="lpcopy">링크 복사</button>
 <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${shareText}" target="_blank" rel="noopener">X</a>

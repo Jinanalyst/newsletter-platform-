@@ -78,6 +78,13 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .grid a.card:hover{border-color:var(--blue);box-shadow:0 18px 36px -24px color-mix(in srgb,var(--blue) 60%,transparent)}
 .item{border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:0 0 12px;background:var(--card);transition:border-color .15s}
 .item:hover{border-color:var(--blue)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 14px;font-size:13px;text-decoration:none;transition:border-color .15s}
+.chip:hover{border-color:var(--blue)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.snsrow{display:flex;gap:10px;align-items:center;margin-top:8px}
+.snsico{flex:0 0 36px;height:36px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--mute)}
+.snsrow input{flex:1;min-width:0}
 .item>.mute{display:block;margin-top:6px}
 /* 블록 에디터 */
 .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}

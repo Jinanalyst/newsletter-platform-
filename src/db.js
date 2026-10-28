@@ -174,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_pv_nl ON page_views(newsletter_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_pv_post ON page_views(post_id);
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS cover TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS accent TEXT NOT NULL DEFAULT '';
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS sns TEXT NOT NULL DEFAULT '';
 `;
 
 // ---------- 드라이버 ----------
