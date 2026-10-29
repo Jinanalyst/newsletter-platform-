@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { pub } from './public.js';
 import { feed } from './feed.js';
 import { legal } from './legal.js';
+import { plans } from './plans.js';
 import { dash } from './dashboard.js';
 import { pro } from './pro.js';
 import { ed } from './editor.js';
@@ -53,6 +54,7 @@ app.use(sbRouter); // SUPABASE_URL 설정 시 가입·로그인·재설정을 Su
 app.use(pub);
 app.use(feed); // 커뮤니티 포스트(/posts)
 app.use(legal); // 개인정보처리방침(/privacy) · 환불 정책(/refund)
+app.use(plans); // 요금제(/pricing) · 결제(PG 연동 지점)
 app.use(billing);
 app.use(ed);   // 글 작성 도구 (블록 에디터·템플릿·가져오기)
 app.use(dash);

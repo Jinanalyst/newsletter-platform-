@@ -12,7 +12,7 @@ const mail = (lang) => (contact() ? `<a href="mailto:${h(contact())}">${h(contac
 
 const PRIVACY = {
   ko: () => `<h1>개인정보처리방침</h1><p class="mute">시행일 ${EFFECTIVE}</p>
-<p>lett.(이하 "서비스")는 이용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 이 방침은 어떤 정보를 왜 수집하고, 어떻게 쓰고 보호하는지 설명합니다.</p>
+<p>체인랩스(사업자등록번호 382-25-02223)가 운영하는 lett.(이하 "서비스")는 이용자의 개인정보를 소중히 다루며, 관련 법령을 준수합니다. 이 방침은 어떤 정보를 왜 수집하고, 어떻게 쓰고 보호하는지 설명합니다.</p>
 <h2>1. 수집하는 개인정보</h2>
 <table class="tbl"><tr><th>구분</th><th>항목</th><th>수집 시점</th></tr>
 <tr><td>회원(발행자)</td><td>이메일, 이름(선택), 소개(선택), 비밀번호(암호화 저장) 또는 Google 계정 식별자</td><td>회원가입·프로필 수정</td></tr>
@@ -27,7 +27,7 @@ const PRIVACY = {
 <h2>4. 처리 위탁 및 제3자 제공</h2>
 <p>서비스 운영을 위해 아래 업체에 처리를 위탁합니다. 그 밖에 이용자의 동의 없이 개인정보를 제3자에게 제공하지 않으며, 법령에 따라 요구되는 경우에만 예외로 합니다.</p>
 <table class="tbl"><tr><th>수탁자</th><th>위탁 업무</th></tr>
-<tr><td>Stripe</td><td>유료 구독 결제 처리</td></tr><tr><td>SMTP 메일 발송 사업자</td><td>뉴스레터·인증 메일 발송</td></tr>
+<tr><td>Stripe, 결제대행(PG)사</td><td>유료 구독·요금제 결제 처리</td></tr><tr><td>SMTP 메일 발송 사업자</td><td>뉴스레터·인증 메일 발송</td></tr>
 <tr><td>Supabase, 호스팅 사업자(Vercel 등)</td><td>데이터 저장, 파일 저장, 서비스 호스팅</td></tr><tr><td>Google</td><td>Google 계정으로 로그인 (선택)</td></tr></table>
 <p class="mute">일부 수탁자의 서버는 국외에 있을 수 있으며, 이 경우 이전되는 항목은 위 표의 수탁 업무에 필요한 범위로 한정됩니다.</p>
 <h2>5. 쿠키</h2>
@@ -54,7 +54,7 @@ const PRIVACY = {
 <h2>3. Retention</h2>
 <ul><li>Member data: until the account is deleted</li><li>Subscriber data: until the subscriber unsubscribes or the publisher removes them</li><li>Payment records: 5 years as required by Korean e-commerce law</li><li>Visit records: anonymous values used only for aggregate statistics</li></ul>
 <h2>4. Processors and third parties</h2>
-<table class="tbl"><tr><th>Processor</th><th>Purpose</th></tr><tr><td>Stripe</td><td>Payment processing</td></tr><tr><td>SMTP email provider</td><td>Sending newsletters and verification email</td></tr>
+<table class="tbl"><tr><th>Processor</th><th>Purpose</th></tr><tr><td>Stripe, payment gateway (PG) provider</td><td>Payment processing for paid subscriptions and plans</td></tr><tr><td>SMTP email provider</td><td>Sending newsletters and verification email</td></tr>
 <tr><td>Supabase and hosting providers (e.g. Vercel)</td><td>Data and file storage, hosting</td></tr><tr><td>Google</td><td>Optional Google sign-in</td></tr></table>
 <p>We do not provide personal information to other third parties without consent, except where required by law. Some processors may operate servers outside Korea.</p>
 <h2>5. Cookies</h2>
@@ -70,7 +70,7 @@ const PRIVACY = {
 const REFUND = {
   ko: () => `<h1>환불 정책</h1><p class="mute">시행일 ${EFFECTIVE}</p>
 <h2>1. 환불 기간</h2>
-<p><b>유료 구독 결제일로부터 7일 이내</b>에 요청하시면 결제 금액을 환불해 드립니다. 월간·연간 플랜 모두 동일합니다.</p>
+<p>Pro·Business 요금제와 뉴스레터 유료 구독 모두, <b>결제일로부터 7일 이내</b>에 요청하시면 결제 금액을 환불해 드립니다. 월간·연간 플랜 모두 동일합니다.</p>
 <h2>2. 7일이 지난 경우</h2>
 <p>결제일로부터 7일이 지난 뒤에는 환불이 어렵습니다. 다만 구독은 언제든 해지할 수 있으며, 해지하면 이미 결제한 기간이 끝날 때까지 유료 혜택을 이용하고 <b>다음 결제부터 청구되지 않습니다.</b></p>
 <h2>3. 환불 요청 방법</h2>
@@ -80,7 +80,7 @@ const REFUND = {
 <h2>5. 문의</h2><p>환불 관련 문의: ${mail('ko')}</p>`,
   en: () => `<h1>Refund Policy</h1><p class="mute">Effective ${EFFECTIVE}</p>
 <h2>1. Refund window</h2>
-<p>You can request a refund of your payment <b>within 7 days of the paid-subscription payment date</b>. This applies to both monthly and yearly plans.</p>
+<p>For the Pro and Business plans and for newsletter paid subscriptions, you can request a refund <b>within 7 days of the payment date</b>. This applies to both monthly and yearly plans.</p>
 <h2>2. After 7 days</h2>
 <p>Refunds are not available once 7 days have passed since payment. You can still cancel at any time: paid benefits continue until the end of the period you already paid for, and <b>you will not be charged again.</b></p>
 <h2>3. How to request</h2>

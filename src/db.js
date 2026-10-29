@@ -198,6 +198,20 @@ CREATE TABLE IF NOT EXISTS note_comments (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ncomment_note ON note_comments(note_id, id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_until TEXT;
+CREATE TABLE IF NOT EXISTS plan_orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  provider TEXT NOT NULL DEFAULT '',
+  provider_ref TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  paid_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_porder_user ON plan_orders(user_id, id);
 `;
 
 // ---------- 드라이버 ----------
