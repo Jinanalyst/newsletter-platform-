@@ -5,15 +5,12 @@ import { Router } from 'express';
 import { db, now, baseUrl } from './db.js';
 import { requireUser } from './auth.js';
 import { h } from './render.js';
+import { PLANS, won, planCards, PLAN_CSS } from './plan-data.js';
+export { PLANS };
 
 export const plans = Router();
 
-export const PLANS = {
-  pro: { name: 'Pro', price: 15000, desc: '혼자 시작하는 발행자를 위한 플랜', features: ['이메일 발송과 웹 아카이브', '자동화 메일(환영 메일·시리즈)', '유료 구독·수익 관리', '조회·열람·클릭 통계'] },
-  business: { name: 'Business', price: 30000, desc: '브랜드와 여러 뉴스레터를 위한 플랜', features: ['Pro의 모든 기능', '여러 뉴스레터 운영', '공개 페이지 레이아웃·브랜드 편집', '성장·추천 도구'] },
-};
 const PERIOD_DAYS = 30;
-const won = (n) => '₩' + Number(n).toLocaleString('ko-KR');
 export const planActive = (u) => !!u && !!u.plan && !!u.plan_until && u.plan_until > now();
 
 // ---------- PG 어댑터 ----------
@@ -47,18 +44,13 @@ export async function confirmOrder(orderId, ref = '') {
 plans.get('/pricing', (req, res) => {
   const t = req.t, u = req.user, ready = !!provider();
   const cur = planActive(u) ? u.plan : '';
-  const card = ([key, p]) => `<div class="pl${key === 'business' ? ' hot' : ''}"><h2>${p.name}</h2><p class="mute">${t(p.desc)}</p>
-<div class="pr"><b>${won(p.price)}</b><span>/ ${t('월')}</span></div>
-<ul>${p.features.map((f) => `<li>${t(f)}</li>`).join('')}</ul>
-${cur === key ? `<button class="btn" disabled>${t('이용 중')} · ${new Date(u.plan_until).toLocaleDateString(req.lang === 'ko' ? 'ko-KR' : 'en-CA')}</button>` : u
-    ? `<form method="post" action="/pricing/subscribe"><input type="hidden" name="plan" value="${key}"><button class="primary" ${ready ? '' : 'disabled'}>${p.name} ${t('시작하기')}</button></form>`
-    : `<a class="btn primary" href="/login">${t('로그인하고 시작하기')}</a>`}</div>`;
-  res.page(t('요금제'), `<style>.pls{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.pl{border:1px solid var(--line);border-radius:20px;background:var(--card);padding:26px}
-.pl.hot{border-color:var(--blue);box-shadow:0 18px 40px -26px var(--blue)}.pl h2{margin:0 0 4px;font-size:22px;color:var(--ink)}.pr{margin:14px 0}.pr b{font-size:32px;letter-spacing:-.04em}.pr span{color:var(--mute);margin-left:4px}
-.pl ul{padding-left:18px;margin:0 0 20px}.pl li{margin:6px 0}@media(max-width:700px){.pls{grid-template-columns:1fr}}</style>
+  const button = (key, p) => (cur === key ? `<button class="plbtn off" disabled>${t('이용 중')} · ${new Date(u.plan_until).toLocaleDateString(req.lang === 'ko' ? 'ko-KR' : 'en-CA')}</button>` : u
+    ? `<form method="post" action="/pricing/subscribe" style="margin:0"><input type="hidden" name="plan" value="${key}"><button class="plbtn" ${ready ? '' : 'disabled'}>${ready ? `${p.name} ${t('시작하기')}` : t('준비 중')}</button></form>`
+    : `<a class="plbtn" href="/login">${t('로그인하고 시작하기')}</a>`);
+  res.page(t('요금제'), `${PLAN_CSS}
 <h1>${t('요금제')}</h1><p class="mute">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund">${t('환불 정책')}</a></p>
 ${ready ? '' : `<div class="msg">${t('결제 연동 준비 중입니다. 곧 이용하실 수 있어요.')}</div>`}
-<div class="pls">${Object.entries(PLANS).map(card).join('')}</div>`, { msg: req.query.m });
+${planCards(t, button)}`, { msg: req.query.m });
 });
 
 // ---------- 결제 시작 ----------

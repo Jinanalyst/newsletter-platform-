@@ -3,6 +3,7 @@ import { h } from './render.js';
 import { tr, langSwitcher } from './i18n.js';
 import { ago, authorName } from './note-utils.js';
 import { bizInfo } from './business.js';
+import { planCards, PLAN_CSS } from './plan-data.js';
 
 // 브랜드: 네이비 #0F172A · 블루 #3B82F6 · 배경 #F8FAFC · 그레이 #94A3B8
 export const FAVICON = `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#0F172A"/><rect x="11" y="7" width="6.5" height="21" rx="3.2" fill="#fff"/><circle cx="26" cy="27" r="5" fill="#3B82F6"/></svg>')}">`;
@@ -251,6 +252,10 @@ ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pi
 
 <section id="explore" class="feat"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
 <p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p>${explore}</div></section>
+
+<section id="pricing"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
+<p class="sub" style="margin-bottom:0">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund" style="text-decoration:underline">${t('환불 정책')}</a></p>
+${PLAN_CSS}${planCards(t, () => `<button class="plbtn off" disabled>${t('준비 중')}</button>`)}</div></section>
 
 <div class="band"><div class="wrap"><div class="bandin"><h2>${t('오늘, 첫 번째 이야기를')}<br>${t('시작해 보세요.')}</h2><p>${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}</p>
 <a class="pill white" href="${user ? '/app' : '/signup'}">${user ? t('내 뉴스레터로 이동') : t('무료로 시작하기')} →</a></div></div></div>
