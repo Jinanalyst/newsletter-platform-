@@ -5,12 +5,12 @@ import { requireUser } from './auth.js';
 import { h } from './render.js';
 import { page, fmt, pct } from './views.js';
 import { stripeConfigured, won } from './billing.js';
-import { createWelcome } from './seed.js';
 
 export const pro = Router();
 pro.use('/app', requireUser);
 
 const back = (res, path, m) => res.redirect(m ? path + (path.includes('?') ? '&' : '?') + 'm=' + encodeURIComponent(m) : path);
+const jsonForScript = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), 'g'), '\\u2028').replace(new RegExp(String.fromCharCode(0x2029), 'g'), '\\u2029');
 const int = (v, max = 100_000_000) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
 
 pro.param('nid', async (req, res, next, id) => {
@@ -65,23 +65,20 @@ pro.get('/app/n/:nid/automation', async (req, res) => {
   const list = await db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM posts p WHERE p.series_id=s.id AND p.kind='step') steps,
     (SELECT COUNT(*) FROM series_enroll e WHERE e.series_id=s.id AND e.done=0) running,
     (SELECT COUNT(*) FROM series_enroll e WHERE e.series_id=s.id AND e.done=1) finished FROM series s WHERE s.newsletter_id=? ORDER BY s.id`).all(nl.id);
-  res.page('자동화', `<h1>자동화</h1><p class="mute">구독이 확정되면 자동으로 시작되는 메일 시리즈입니다. 환영 메일은 "즉시(0일)" 단계 하나짜리 시리즈입니다.</p>
+  res.page('자동화', `<h1>자동화</h1><p class="mute">구독이 확정되면 자동으로 발송되는 메일 흐름입니다. 메일을 단계로 쌓고, 끌어서 순서를 바꾸고, 단계마다 발송 시점(며칠 뒤)과 대상을 정할 수 있어요. 환영 메일은 "즉시(0일)" 단계 하나짜리 흐름입니다.</p>
 <div class="card"><table><tr><th>이름</th><th>상태</th><th>단계</th><th>진행 중</th><th>완료</th></tr>${list.map((s) =>
   `<tr><td><a href="/app/n/${nl.id}/automation/${s.id}">${h(s.name)}</a></td><td><span class="badge ${s.active ? 'active' : ''}">${s.active ? '켜짐' : '꺼짐'}</span></td><td>${s.steps}</td><td>${s.running}</td><td>${s.finished}</td></tr>`).join('')
     || '<tr><td colspan="5" class="mute">아직 자동화가 없습니다.</td></tr>'}</table></div>
-<div class="row"><form method="post" action="/app/n/${nl.id}/automation/welcome"><button class="primary">+ 환영 메일 만들기</button></form>
-<form class="row" method="post" action="/app/n/${nl.id}/automation/series"><input name="name" placeholder="새 시리즈 이름 (예: 입문 5일 코스)" required style="width:280px"><button>+ 시리즈</button></form></div>`,
+<form class="row" method="post" action="/app/n/${nl.id}/automation/create"><input name="name" placeholder="자동화 이름 (예: 환영 메일, 입문 5일 코스)" maxlength="60" style="width:300px"><button class="primary">+ 자동화 메일 만들기</button></form>`,
   { nl, active: 'automation', wide: true, msg: req.query.m });
 });
-pro.post('/app/n/:nid/automation/welcome', async (req, res) => {
-  const sid = await createWelcome(req.nl.id, req.nl.name);
-  res.redirect(`/app/n/${req.nl.id}/automation/${sid}`);
-});
-pro.post('/app/n/:nid/automation/series', async (req, res) => {
-  const name = String(req.body.name || '').trim().slice(0, 60);
-  if (!name) return back(res, `/app/n/${req.nl.id}/automation`, '이름을 입력하세요.');
+// 새 자동화: 구독 즉시 발송되는 첫 단계가 들어 있는 흐름을 만든다. 이후 단계를 추가하고 순서를 바꾼다
+pro.post('/app/n/:nid/automation/create', async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 60) || '자동화 메일';
   const sid = Number((await db.prepare('INSERT INTO series(newsletter_id,name,created_at) VALUES(?,?,?)').run(req.nl.id, name, now())).lastInsertRowid);
-  res.redirect(`/app/n/${req.nl.id}/automation/${sid}`);
+  await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,1,0,?,?,?)")
+    .run(req.nl.id, sid, '', '', now());
+  back(res, `/app/n/${req.nl.id}/automation/${sid}`, '자동화를 만들었습니다. 첫 메일의 제목과 본문을 채워 주세요.');
 });
 
 const getSeries = async (req) => await db.prepare('SELECT * FROM series WHERE id=? AND newsletter_id=?').get(req.params.sid, req.nl.id);
@@ -93,18 +90,60 @@ pro.get('/app/n/:nid/automation/:sid', async (req, res) => {
   res.page(s.name, `<div class="row"><h1 class="grow">${h(s.name)}</h1>
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}" class="row"><input name="name" value="${h(s.name)}" style="width:200px">
 <label style="margin:0"><input type="checkbox" name="active" value="1" style="width:auto" ${s.active ? 'checked' : ''}> 켜기</label><button class="sm">저장</button></form></div>
-<p class="mute">구독이 확정되는 시점에 자동 등록됩니다. 각 단계의 "일수"는 <b>직전 단계 발송 후</b> 며칠 뒤에 보낼지입니다 (첫 단계는 구독 후).
-조건에 맞지 않는 구독자는 그 단계를 건너뜁니다. 켜기 이후에 구독한 사람부터 적용됩니다.</p>
-${steps.map((p, i) => `<form class="card" method="post" action="/app/n/${nl.id}/automation/${s.id}/steps/${p.id}">
-<div class="row"><b>단계 ${i + 1}</b><span class="mute">순서</span><input type="number" name="step_pos" value="${p.step_pos}" style="width:70px">
-<span class="mute">일수</span><input type="number" name="delay_days" min="0" max="365" value="${p.delay_days}" style="width:70px">
-<select name="cond" style="width:auto">${Object.entries(COND).map(([k, v]) => `<option value="${k}" ${p.cond === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-<a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a></div>
-<label>제목</label><input name="subject" value="${h(p.subject)}" required>
-<label>본문 (마크다운, {{name}} 사용 가능)</label><textarea name="body_md" rows="8">${h(p.body_md)}</textarea>
-<div class="row" style="margin-top:10px"><button class="primary sm">저장</button><button class="sm danger" formaction="/app/n/${nl.id}/automation/${s.id}/steps/${p.id}/delete" onclick="return confirm('이 단계를 삭제할까요?')">단계 삭제</button></div></form>`).join('')}
-<form method="post" action="/app/n/${nl.id}/automation/${s.id}/steps"><button>+ 단계 추가</button></form>
-<form method="post" action="/app/n/${nl.id}/automation/${s.id}/delete" onsubmit="return confirm('시리즈와 진행 내역이 삭제됩니다.')" style="margin-top:24px"><button class="danger sm">시리즈 삭제</button></form>
+<p class="mute">구독이 확정되는 시점에 자동 등록됩니다. 아래 흐름도에서 메일을 <b>클릭하면 오른쪽에서 수정</b>하고, <b>끌어서(또는 ↑↓) 순서를 바꿉니다</b>.
+각 단계의 "일수"는 <b>직전 메일 발송 후</b> 며칠 뒤에 보낼지입니다 (첫 메일은 구독 후). 조건에 맞지 않는 구독자는 그 단계를 건너뛰고, 켜기 이후에 구독한 사람부터 적용됩니다.</p>
+<style>
+.fm{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:28px;align-items:start;margin-top:18px}
+.fmap{display:flex;flex-direction:column;align-items:stretch}
+.fn{border:1px solid var(--line);background:var(--card);border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:center;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.fn:hover{border-color:var(--blue)}.fn.sel{border-color:var(--blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 18%,transparent)}
+.fn.over{border-style:dashed;border-color:var(--blue)}.fn.drag{opacity:.4}
+.fn .no{flex:0 0 26px;height:26px;border-radius:50%;background:var(--blue-soft);color:var(--blue);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.fn .tx{flex:1;min-width:0}.fn .tx b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn .tx small{color:var(--mute);font-size:12px}.fn .tx small.warn{color:var(--bad)}
+.fn .hd{cursor:grab;color:var(--mute);user-select:none;padding:0 2px;font-size:16px;line-height:1}
+.fn .mv{display:flex;flex-direction:column;gap:2px}.fn .mv button{padding:0 7px;font-size:11px;line-height:16px;border-radius:6px}
+.fs{border:1px dashed var(--line);border-radius:999px;padding:6px 14px;text-align:center;color:var(--mute);font-size:13px;background:var(--soft)}
+.fc{align-self:center;display:flex;flex-direction:column;align-items:center;color:var(--mute);font-size:12px}
+.fc i{display:block;width:2px;height:12px;background:var(--line)}.fc span{padding:2px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card);margin:0}
+.fadd{margin-top:10px;align-self:center}
+.fpanel{position:sticky;top:70px}
+@media(max-width:860px){.fm{grid-template-columns:1fr}.fpanel{position:static}}
+</style>
+<div class="fm"><div class="fmap" id="fmap"><div class="fs">구독 확정</div>
+${steps.map((p, i) => `<div class="fc"><i></i><span>${i ? `직전 메일 발송 후 ${p.delay_days}일` : p.delay_days ? `구독 후 ${p.delay_days}일` : '구독 즉시'}</span><i></i></div>
+<div class="fn" draggable="false" data-id="${p.id}"><span class="hd" title="끌어서 순서 변경">⋮⋮</span><span class="no">${i + 1}</span>
+<span class="tx"><b>${h(p.subject || '(제목 없음)')}</b><small${p.subject && p.body_md ? '' : ' class="warn"'}>${p.subject && p.body_md ? COND[p.cond] || COND[''] : '제목·본문이 비어 있으면 발송되지 않아요'}</small></span>
+<span class="mv"><button type="button" class="up" aria-label="위로">▲</button><button type="button" class="dn" aria-label="아래로">▼</button></span></div>`).join('')}
+<form class="fadd" method="post" action="/app/n/${nl.id}/automation/${s.id}/steps"><button>+ 메일 추가</button></form></div>
+<div class="fpanel"><form class="card" id="fform" method="post" style="margin:0" hidden>
+<div class="row"><b id="ftitle"></b><span class="grow"></span><a id="fstat" href="#">통계</a></div>
+<div class="row" style="margin-top:10px"><span class="mute">일수</span><input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px">
+<select name="cond" id="fcond" style="width:auto">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+<label>제목</label><input name="subject" id="fsub" required>
+<label>본문 (마크다운, {{name}} 사용 가능)</label><textarea name="body_md" id="fbody" rows="12"></textarea>
+<div class="row" style="margin-top:10px"><button class="primary sm">저장</button><button type="submit" class="sm danger" id="fdel" onclick="return confirm('이 메일을 삭제할까요?')">메일 삭제</button></div></form>
+<p class="mute" id="fhint">왼쪽 흐름도에서 메일을 선택하세요.</p></div></div>
+<script>(function(){var D=${jsonForScript(steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay_days: p.delay_days, cond: p.cond })))},B='/app/n/${nl.id}/automation/${s.id}',
+map=document.getElementById('fmap'),f=document.getElementById('fform'),hint=document.getElementById('fhint');
+function $(i){return document.getElementById(i)}
+function nodes(){return [].slice.call(map.querySelectorAll('.fn'))}
+function sel(id){var d=D.filter(function(x){return x.id==id})[0];nodes().forEach(function(n){n.classList.toggle('sel',n.dataset.id==id)});if(!d){f.hidden=true;hint.hidden=false;return}
+f.hidden=false;hint.hidden=true;f.action=B+'/steps/'+d.id;$('ftitle').textContent='메일 '+(nodes().findIndex(function(n){return n.dataset.id==id})+1);$('fstat').href='/app/n/${nl.id}/posts/'+d.id+'/stats';
+$('fdelay').value=d.delay_days;$('fcond').value=d.cond||'';$('fsub').value=d.subject;$('fbody').value=d.body_md;$('fdel').formAction=B+'/steps/'+d.id+'/delete'}
+function save(){var ids=nodes().map(function(n){return n.dataset.id}).join(',');var cur=(map.querySelector('.fn.sel')||{dataset:{}}).dataset.id;
+fetch(B+'/reorder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'order='+ids}).then(function(){location.href=B+(cur?'?step='+cur:'')}).catch(function(){location.reload()})}
+function put(n,ref){[n.previousElementSibling,n].forEach(function(el){map.insertBefore(el,ref)})}
+map.addEventListener('click',function(e){var n=e.target.closest('.fn');if(!n)return;var b=e.target.closest('button');
+if(b){var ns=nodes(),i=ns.indexOf(n);if(b.classList.contains('up')){if(i<1)return;put(n,ns[i-1].previousElementSibling)}else{if(i>ns.length-2)return;put(ns[i+1],n.previousElementSibling)}save();return}
+if(!e.target.closest('.hd'))sel(n.dataset.id)});
+var drag=null;
+nodes().forEach(function(n){var hd=n.querySelector('.hd');hd.addEventListener('mousedown',function(){n.draggable=true});hd.addEventListener('touchstart',function(){n.draggable=true},{passive:true});
+n.addEventListener('dragstart',function(e){drag=n;n.classList.add('drag');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',n.dataset.id)});
+n.addEventListener('dragend',function(){n.draggable=false;n.classList.remove('drag');nodes().forEach(function(x){x.classList.remove('over')});drag=null});
+n.addEventListener('dragover',function(e){if(drag&&drag!==n){e.preventDefault();n.classList.add('over')}});n.addEventListener('dragleave',function(){n.classList.remove('over')});
+n.addEventListener('drop',function(e){e.preventDefault();if(!drag||drag===n)return;var ns=nodes();if(ns.indexOf(drag)<ns.indexOf(n))put(drag,n.nextElementSibling);else put(drag,n.previousElementSibling);save()})});
+var q=new URLSearchParams(location.search).get('step');sel(D.some(function(x){return x.id==q})?q:D[0]&&D[0].id)})();</script>
 <p><a href="/app/n/${nl.id}/automation">← 자동화 목록</a></p>`, { nl, active: 'automation', wide: true, msg: req.query.m });
 });
 pro.post('/app/n/:nid/automation/:sid', async (req, res) => {
@@ -116,15 +155,32 @@ pro.post('/app/n/:nid/automation/:sid/steps', async (req, res) => {
   const s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${req.nl.id}/automation`);
   const pos = ((await db.prepare("SELECT MAX(step_pos) m FROM posts WHERE series_id=? AND kind='step'").get(s.id)).m || 0) + 1;
-  await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
-    .run(req.nl.id, s.id, pos, pos === 1 ? 0 : 3, '', '', now());
-  back(res, `/app/n/${req.nl.id}/automation/${s.id}`, '단계를 추가했습니다. 제목과 본문을 채워주세요.');
+  const id = Number((await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
+    .run(req.nl.id, s.id, pos, pos === 1 ? 0 : 3, '', '', now())).lastInsertRowid);
+  back(res, `/app/n/${req.nl.id}/automation/${s.id}?step=${id}`, '메일을 추가했습니다. 제목과 본문을 채워주세요.');
 });
 pro.post('/app/n/:nid/automation/:sid/steps/:pid', async (req, res) => {
   const s = await getSeries(req), b = req.body;
-  if (s) await db.prepare("UPDATE posts SET subject=?, body_md=?, step_pos=?, delay_days=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
-    .run(String(b.subject || '').trim(), String(b.body_md || ''), int(b.step_pos, 1000), int(b.delay_days, 365), ['free', 'paid'].includes(b.cond) ? b.cond : '', req.params.pid, s.id);
-  back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}`, '저장했습니다.');
+  if (s) await db.prepare("UPDATE posts SET subject=?, body_md=?, delay_days=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
+    .run(String(b.subject || '').trim(), String(b.body_md || ''), int(b.delay_days, 365), ['free', 'paid'].includes(b.cond) ? b.cond : '', req.params.pid, s.id);
+  back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}?step=${encodeURIComponent(req.params.pid)}`, '저장했습니다.');
+});
+// 흐름 순서 변경: order=단계 id 를 새 순서대로 쉼표로 나열. 진행 중인 구독자는 "같은 메일"을 가리키도록 위치를 옮겨 준다
+pro.post('/app/n/:nid/automation/:sid/reorder', async (req, res) => {
+  const s = await getSeries(req);
+  if (!s) return res.status(404).json({ ok: false });
+  const steps = await db.prepare("SELECT id, step_pos FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
+  const have = new Set(steps.map((x) => x.id));
+  const order = [...new Set(String(req.body.order || '').split(',').map(Number).filter((i) => have.has(i)))];
+  for (const x of steps) if (!order.includes(x.id)) order.push(x.id);
+  const newPos = new Map(order.map((id, i) => [id, i + 1]));
+  const moved = new Map();
+  for (const x of steps) if (!moved.has(x.step_pos)) moved.set(x.step_pos, newPos.get(x.id));
+  // 음수로 먼저 옮겼다가 되돌려 1→2, 2→3 같은 연쇄 덮어쓰기를 피한다
+  for (const [from, to] of moved) await db.prepare('UPDATE series_enroll SET next_pos=? WHERE series_id=? AND done=0 AND next_pos=?').run(-to, s.id, from);
+  await db.prepare('UPDATE series_enroll SET next_pos=-next_pos WHERE series_id=? AND next_pos<0').run(s.id);
+  for (const [id, pos] of newPos) await db.prepare('UPDATE posts SET step_pos=? WHERE id=?').run(pos, id);
+  res.json({ ok: true });
 });
 pro.post('/app/n/:nid/automation/:sid/steps/:pid/delete', async (req, res) => {
   const s = await getSeries(req);
