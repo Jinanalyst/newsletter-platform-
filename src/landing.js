@@ -142,7 +142,12 @@ h2{font-size:clamp(30px,4vw,46px);line-height:1.25;font-weight:800;letter-spacin
 footer{border-top:1px solid var(--line);padding:44px 0 56px;color:#64748B;font-size:14px}
 footer .wrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
 footer .sp{flex:1}
-footer .biz{display:flex;gap:2px 16px;flex-wrap:wrap;font-size:12.5px;color:#94A3B8;line-height:1.7;margin-top:-10px}
+footer .fcol{flex-direction:column;align-items:stretch;gap:0}
+footer .fr{display:flex;gap:12px 28px;align-items:center;flex-wrap:wrap}
+footer .fb{border-top:1px solid var(--line);margin-top:28px;padding-top:20px;display:flex;flex-direction:column;gap:12px}
+footer .fl{display:flex;gap:6px 22px;flex-wrap:wrap;font-size:13.5px}
+footer .biz{display:flex;gap:2px 18px;flex-wrap:wrap;font-size:12.5px;color:#94A3B8;line-height:1.7}
+footer .fcp{font-size:12.5px;color:#94A3B8}
 footer a:hover{color:var(--navy)}
 footer .langsw{font-size:13px;display:inline-flex;gap:14px}footer .langsw b{color:var(--navy);font-weight:600}
 html[lang=ja] body,html[lang=zh] body{word-break:normal}
@@ -251,8 +256,9 @@ ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pi
 <a class="pill white" href="${user ? '/app' : '/signup'}">${user ? t('내 뉴스레터로 이동') : t('무료로 시작하기')} →</a></div></div></div>
 </main>
 
-<footer><div class="wrap"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>
-${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('로그인')}</a><a href="/signup">${t('시작하기')}</a>`}<a href="/pricing">${t('요금제')}</a><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a>${langSwitcher(lang)}</div><div class="wrap">${bizInfo(t)}</div></footer>
+<footer><div class="wrap fcol"><div class="fr"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>
+${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('로그인')}</a><a href="/signup">${t('시작하기')}</a>`}${langSwitcher(lang)}</div>
+<div class="fb"><div class="fl"><a href="/pricing">${t('요금제')}</a><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a></div>${bizInfo(t)}<div class="fcp">© ${new Date().getFullYear()} lett.</div></div></div></footer>
 <script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f();
 (function(){var rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
 // 스크롤 등장: 같은 묶음 안에서는 순서대로 조금씩 늦게
