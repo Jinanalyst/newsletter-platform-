@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { pub } from './public.js';
 import { feed } from './feed.js';
+import { legal } from './legal.js';
 import { dash } from './dashboard.js';
 import { pro } from './pro.js';
 import { ed } from './editor.js';
@@ -51,6 +52,7 @@ app.use((req, res, next) => {
 app.use(sbRouter); // SUPABASE_URL 설정 시 가입·로그인·재설정을 Supabase가 처리 (미설정이면 아래 기본 라우트로 통과)
 app.use(pub);
 app.use(feed); // 커뮤니티 포스트(/posts)
+app.use(legal); // 개인정보처리방침(/privacy) · 환불 정책(/refund)
 app.use(billing);
 app.use(ed);   // 글 작성 도구 (블록 에디터·템플릿·가져오기)
 app.use(dash);

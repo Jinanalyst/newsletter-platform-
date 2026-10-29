@@ -250,7 +250,7 @@ ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pi
 </main>
 
 <footer><div class="wrap"><a href="/" class="wm" style="font-size:22px;color:var(--navy)">lett<i>.</i></a><span>${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>
-${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('로그인')}</a><a href="/signup">${t('시작하기')}</a>`}${langSwitcher(lang)}</div></footer>
+${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('로그인')}</a><a href="/signup">${t('시작하기')}</a>`}<a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a>${langSwitcher(lang)}</div></footer>
 <script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f();
 (function(){var rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
 // 스크롤 등장: 같은 묶음 안에서는 순서대로 조금씩 늦게

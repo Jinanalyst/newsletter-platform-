@@ -29,6 +29,7 @@ nav form button:hover{color:var(--ink)}
 .pfin{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap}
 .pfin .wm{font-size:20px}.pfin .sp{flex:1}
 .pfc{max-width:960px;margin:10px auto 0;font-size:12.5px;color:#94A3B8}
+.pfl{display:inline-flex;gap:4px 16px;flex-wrap:wrap}.pfl a{color:var(--mute);text-decoration:none}.pfl a:hover{color:var(--ink)}
 .langsw{display:inline-flex;gap:2px;flex-wrap:wrap}
 .langsw a,.langsw b{padding:3px 10px;border-radius:999px;font-size:13px;font-weight:400;text-decoration:none}
 .langsw a{color:var(--mute)}.langsw a:hover{background:var(--soft);color:var(--ink)}
@@ -192,7 +193,7 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <style>${CSS}</style></head><body>${nav}
 <div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>${t('이메일 인증이 필요합니다.')}</b> ${t('인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.')}
 <form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${nl ? '' : `
-<footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>${langSwitcher(lang)}</div>
+<footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span><span class="pfl"><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a></span>${langSwitcher(lang)}</div>
 <div class="pfc">© ${new Date().getFullYear()} lett.</div></footer>`}</body></html>`;
 }
 
