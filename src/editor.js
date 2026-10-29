@@ -75,12 +75,22 @@ ed.get('/app/n/:nid/posts', async (req, res) => {
 <form method="post" action="/app/n/${nl.id}/posts/new" class="row">${tpls.length ? `<select name="template_id" style="width:auto"><option value="">빈 글</option>${tpls.map((t) => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>` : ''}
 <button class="primary">+ 새 글</button></form></div>
 ${cats.length || c || tag ? `<p class="mute">분류: <a href="/app/n/${nl.id}/posts">전체</a>${cats.map((x) => ` · <a href="?c=${encodeURIComponent(x)}"${x === c ? ' style="font-weight:600"' : ''}>${h(x)}</a>`).join('')}${tag ? ` · #${h(tag)} <a href="/app/n/${nl.id}/posts">✕</a>` : ''}</p>` : ''}
-<div class="card"><table><tr><th>제목</th><th>분류</th><th>상태</th><th>일시</th><th></th></tr>${rows.map((p) => `<tr>
+<form method="post" action="/app/n/${nl.id}/posts/bulk-delete" id="bulk" onsubmit="return bulkSubmit(this)">
+<div class="row" style="margin:6px 0"><button class="sm danger" id="bulkBtn" disabled>선택 삭제</button><span class="mute" id="bulkCnt"></span><span class="mute grow" style="text-align:right">발송된 글은 삭제할 수 없습니다.</span></div>
+<div class="card"><table><tr><th style="width:28px"><input type="checkbox" id="bulkAll" aria-label="전체 선택"></th><th>제목</th><th>분류</th><th>상태</th><th>일시</th><th></th></tr>${rows.map((p) => {
+    const editable = ['draft', 'scheduled'].includes(p.status);
+    return `<tr>
+<td>${editable ? `<input type="checkbox" name="ids" value="${p.id}" class="bulkChk" aria-label="선택">` : ''}</td>
 <td><a href="/app/n/${nl.id}/posts/${p.id}">${h(p.subject || '(제목 없음)')}</a></td>
 <td class="mute">${h(p.category)}${p.tags ? ` ${p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ')}` : ''}</td>
 <td><span class="badge ${p.status}">${p.status}</span></td>
-<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td><a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a></td></tr>`).join('')
-    || '<tr><td colspan="5" class="mute">아직 없습니다.</td></tr>'}</table></div>
+<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td>${editable ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}">수정</a> ` : ''}<a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a></td></tr>`;
+  }).join('')
+    || '<tr><td colspan="6" class="mute">아직 없습니다.</td></tr>'}</table></div></form>
+<script>(function(){var all=document.getElementById('bulkAll'),btn=document.getElementById('bulkBtn'),cnt=document.getElementById('bulkCnt'),cs=[].slice.call(document.querySelectorAll('.bulkChk'));
+function upd(){var n=cs.filter(function(c){return c.checked}).length;btn.disabled=!n;cnt.textContent=n?n+'개 선택':'';all.checked=!!cs.length&&n===cs.length;all.indeterminate=n>0&&n<cs.length}
+all.addEventListener('change',function(){cs.forEach(function(c){c.checked=all.checked});upd()});cs.forEach(function(c){c.addEventListener('change',upd)});
+window.bulkSubmit=function(){var n=cs.filter(function(c){return c.checked}).length;return n>0&&confirm(n+'개의 글을 삭제할까요? 되돌릴 수 없습니다.')};upd()})();</script>
 <p class="mute"><a href="/app/n/${nl.id}/templates">템플릿 관리</a></p>`, { nl, active: 'posts', wide: true, msg: req.query.m });
 });
 
@@ -89,6 +99,14 @@ ed.post('/app/n/:nid/posts/new', async (req, res) => {
   const id = Number((await db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
     .run(req.nl.id, t?.subject || '', t?.preview || '', t?.body_md || '', t ? cleanCategory(req.nl, t.category) : '', t?.tags || '', now(), now())).lastInsertRowid);
   res.redirect(`/app/n/${req.nl.id}/posts/${id}`);
+});
+
+// 선택한 글 일괄 삭제 (초안·예약 글만)
+ed.post('/app/n/:nid/posts/bulk-delete', async (req, res) => {
+  const ids = [].concat(req.body.ids || []).map(Number).filter(Number.isInteger);
+  let n = 0;
+  for (const id of ids) n += Number((await db.prepare("DELETE FROM posts WHERE id=? AND newsletter_id=? AND kind='post' AND status IN ('draft','scheduled')").run(id, req.nl.id)).changes);
+  back(res, `/app/n/${req.nl.id}/posts`, n ? `${n}개의 글을 삭제했습니다.` : '삭제할 글이 없습니다.');
 });
 
 // ================= 에디터 =================

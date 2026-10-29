@@ -31,7 +31,7 @@ export function noteCard(n, { t, me, base }) {
   const mine = me && me.id === n.user_id;
   return `<article class="nt" id="n${n.id}"><a class="avl" href="/posts/${n.id}" tabindex="-1" aria-hidden="true">${avatar(n)}</a><div class="nb">
 <div class="nh"><b>${h(authorName(n))}</b><a class="ago" href="/posts/${n.id}">${ago(n.created_at, t)}</a><span class="sp"></span>${n.nl_slug ? `<a class="nsub" href="/n/${h(n.nl_slug)}">${t('뉴스레터 보기')}</a>` : ''}
-${mine ? `<form method="post" action="/posts/${n.id}/delete" onsubmit="return confirm(${h(JSON.stringify(t('삭제할까요?')))})"><button class="x" title="${t('삭제')}">${t('삭제')}</button></form>` : ''}</div>
+${mine ? `<a class="x" href="/posts/${n.id}/edit">${t('수정')}</a><form method="post" action="/posts/${n.id}/delete" onsubmit="return confirm(${h(JSON.stringify(t('삭제할까요?')))})"><button class="x" title="${t('삭제')}">${t('삭제')}</button></form>` : ''}</div>
 <div class="nx">${noteHtml(n.body)}</div>
 <div class="na"><button type="button" class="lk${n.liked ? ' on' : ''}" data-id="${n.id}" aria-label="${t('좋아요')}">${ICON.heart}<span>${n.likes}</span></button>
 <a class="cm" href="/posts/${n.id}#comments" aria-label="${t('댓글')}">${ICON.chat}<span>${n.comments}</span></a>

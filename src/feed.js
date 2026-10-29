@@ -31,7 +31,7 @@ const CSS = `<style>
 .nh{display:flex;align-items:center;gap:8px;font-size:14.5px;min-height:24px}
 .nh b{font-weight:600}.nh .ago{color:var(--mute);font-size:13px;text-decoration:none}.nh .sp{flex:1}
 .nh .nsub{color:#EA580C;font-size:13px;font-weight:600;text-decoration:none}
-.nh form{margin:0}.nh .x{border:0;background:none;padding:0 2px;font-size:12.5px;color:var(--mute)}.nh .x:hover{color:var(--bad)}
+.nh form{margin:0}.nh .x{border:0;background:none;padding:0 2px;font-size:12.5px;color:var(--mute);text-decoration:none}.nh .x:hover{color:var(--bad)}
 .nx{font-size:15.5px;line-height:1.65;margin:4px 0 12px;white-space:normal;overflow-wrap:anywhere}
 .nx a{color:var(--blue)}
 .na{display:flex;align-items:center;gap:22px;color:var(--mute)}
@@ -125,6 +125,26 @@ feed.post('/posts/:id/comments', async (req, res) => {
   if (await limitHits(`ncomment:${req.user.id}`, 60_000, 10)) return res.status(429).send(req.t('요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'));
   await db.prepare('INSERT INTO note_comments(note_id,user_id,body,created_at) VALUES(?,?,?,?)').run(n.id, req.user.id, body, now());
   res.redirect(`/posts/${n.id}#comments`);
+});
+
+// 내 포스트 수정
+feed.get('/posts/:id/edit', async (req, res) => {
+  const t = req.t;
+  if (!req.user) return res.redirect('/login');
+  const n = await db.prepare('SELECT * FROM notes WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
+  if (!n) return res.redirect('/posts');
+  res.page(t('포스트 수정'), `${CSS}<p class="mute" style="margin:0 0 4px"><a href="/posts/${n.id}">← ${t('포스트')}</a></p>
+<form class="compose" method="post" action="/posts/${n.id}/edit"><textarea name="body" data-max="${NOTE_MAX}" maxlength="${NOTE_MAX}" rows="4" required>${h(n.body)}</textarea>
+<div class="bar"><span class="cnt"></span><a class="btn sm" href="/posts/${n.id}">${t('취소')}</a><button class="primary sm">${t('저장')}</button></div></form>${script(req.user, t)}`,
+  { msg: req.query.m });
+});
+
+feed.post('/posts/:id/edit', async (req, res) => {
+  if (!req.user) return res.redirect('/login');
+  const body = String(req.body.body || '').replace(/\r\n/g, '\n').trim().slice(0, NOTE_MAX);
+  if (!body) return res.redirect(`/posts/${req.params.id}/edit` + note(req.t('내용을 입력해 주세요.')));
+  await db.prepare('UPDATE notes SET body=? WHERE id=? AND user_id=?').run(body, req.params.id, req.user.id);
+  res.redirect(`/posts/${req.params.id}`);
 });
 
 feed.post('/posts/:id/delete', async (req, res) => {
