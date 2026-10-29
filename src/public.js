@@ -293,11 +293,22 @@ var c=document.getElementById('lpcopy');c.onclick=function(){(navigator.clipboar
 pub.get('/n/:slug/embed', async (req, res) => {
   const nl = await getNl(req.params.slug);
   if (!nl) return notFound(res);
-  res.send(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-body{margin:0;padding:8px;font:15px -apple-system,'Segoe UI','Malgun Gothic',sans-serif}.card{border:1px solid #e8e3db;border-radius:12px;padding:14px}
-.row{display:flex;gap:8px;flex-wrap:wrap}.grow{flex:1 1 160px}input{padding:9px;border:1px solid #ccc;border-radius:8px;font:inherit}
-button{padding:9px 16px;border:0;border-radius:8px;background:#c2410c;color:#fff;font:inherit;cursor:pointer}.mute{color:#888;font-size:13px}.honey{position:absolute;left:-9999px}</style></head>
-<body><b>${h(nl.name)}</b>${req.query.m ? `<p style="color:#c2410c">${h(req.query.m)}</p>` : ''}${subForm(nl, req.query.ref, true, req.t)}</body></html>`);
+  const accent = /^#[0-9a-f]{6}$/i.test(nl.accent) ? nl.accent : '#3B82F6';
+  // 공개 페이지와 같은 디자인(글꼴·둥근 모서리·알약 버튼·대표 색상). 배경은 투명해서 붙여 넣은 사이트에 자연스럽게 어울린다
+  res.send(`<!doctype html><html lang="${h(req.lang || 'ko')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+:root{--ink:#0F172A;--mute:#64748B;--line:#E2E8F0;--card:#fff;--accent:${accent}}
+*{box-sizing:border-box}
+body{margin:0;padding:8px;background:transparent;color:var(--ink);font:15px/1.7 'Pretendard','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;letter-spacing:-.015em;-webkit-font-smoothing:antialiased}
+.ttl{display:block;font-size:17px;font-weight:700;letter-spacing:-.03em;margin:0 2px 8px}
+.card{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--card);margin:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1 1 160px;min-width:0}
+input{width:100%;font:inherit;font-size:14.5px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;transition:border-color .15s,box-shadow .15s}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+button{font:inherit;font-size:14px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:999px;padding:9px 22px;transition:transform .15s,box-shadow .15s}
+button:hover{transform:translateY(-1px);box-shadow:0 10px 22px -12px var(--accent)}
+.mute{color:var(--mute);font-size:13px}.honey{position:absolute;left:-9999px}
+.msg{margin:0 0 10px;padding:9px 14px;border-radius:10px;background:color-mix(in srgb,var(--accent) 10%,#fff);color:var(--ink);font-size:13.5px}</style></head>
+<body><b class="ttl">${h(nl.name)}</b>${req.query.m ? `<p class="msg">${h(req.query.m)}</p>` : ''}${subForm(nl, req.query.ref, true, req.t)}</body></html>`);
 });
 
 pub.get('/n/:slug/p/:id', async (req, res) => {

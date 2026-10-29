@@ -151,7 +151,7 @@ pro.get('/app/n/:nid/growth', async (req, res) => {
 <div class="stats"><div class="stat"><b>${total}</b>추천으로 가입한 구독자</div></div>
 <h2>구독 폼 임베드</h2><div class="card"><p class="mute">블로그·웹사이트에 아래 코드를 붙여넣으세요.</p>
 <textarea rows="3" readonly onclick="this.select()">${h(snippet)}</textarea>
-<p><a href="/n/${h(nl.slug)}/embed" target="_blank">미리보기 ↗</a></p></div>
+<p style="margin:12px 0 0"><a class="btn" style="padding:4px 14px;font-size:13px" href="/n/${h(nl.slug)}/embed" target="_blank" rel="noopener">미리보기 ↗</a></p></div>
 <h2>공유 링크</h2><div class="card"><p class="mute">구독 페이지: <input readonly value="${h(base)}/n/${h(nl.slug)}" onclick="this.select()"></p>
 <p class="mute">각 글의 공개 페이지(/n/${h(nl.slug)}/p/글번호)에는 링크 복사·X·Facebook 공유 버튼과 미리보기(OG) 정보가 들어 있습니다.</p></div>
 <h2>추천인 프로그램</h2><p class="mute">모든 메일 하단에 "친구에게 추천하기" 링크가 들어가고, 구독자마다 고유 추천 링크가 생깁니다. 추천받은 사람이 구독을 확정하면 집계됩니다.</p>
