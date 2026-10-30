@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 7; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 8; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -238,6 +238,43 @@ CREATE TABLE IF NOT EXISTS course_items (
   size BIGINT NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_citem_course ON course_items(course_id, pos);
+-- 강의·상품 결제 기록: 콘텐츠를 삭제해도 정산 금액이 줄지 않도록 외래키 없이 제목을 함께 남긴다
+CREATE TABLE IF NOT EXISTS course_sales (
+  id SERIAL PRIMARY KEY,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  buyer_id INTEGER,
+  plan TEXT NOT NULL DEFAULT 'once',
+  amount INTEGER NOT NULL,
+  fee INTEGER NOT NULL,
+  ref TEXT UNIQUE,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_csale_owner ON course_sales(owner_id, created_at);
+CREATE TABLE IF NOT EXISTS payout_accounts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  bank TEXT NOT NULL,
+  holder TEXT NOT NULL,
+  account_enc TEXT NOT NULL,
+  last4 TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS payouts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  bank TEXT NOT NULL,
+  holder TEXT NOT NULL,
+  account_enc TEXT NOT NULL,
+  last4 TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'requested',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  processed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_payout_user ON payouts(user_id, id);
 `;
 
 // ---------- 드라이버 ----------
