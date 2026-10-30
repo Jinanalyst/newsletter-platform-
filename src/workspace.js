@@ -55,13 +55,16 @@ const here = (req, p) => `/app/n/${req.nl.id}/settings/${p}`;
 
 // ----- 도메인 -----
 const hostingerUrl = () => process.env.HOSTINGER_URL || 'https://www.hostinger.com/domain-name-search';
+// 접속을 이 서비스(Vercel)로 연결하는 레코드 값. 다른 호스팅이면 환경 변수로 바꾼다
+const dnsTarget = () => process.env.CUSTOM_DOMAIN_TARGET || 'cname.vercel-dns.com';
+const dnsIp = () => process.env.CUSTOM_DOMAIN_IP || '76.76.21.21';
+const dnsCheckUrl = (type, name) => `https://dnschecker.org/#${type}/${encodeURIComponent(name)}`;
 const rec = (type, host, value) => `<tr><td><b>${type}</b></td><td><code>${h(host)}</code></td><td><code>${h(value)}</code></td></tr>`;
 
 workspace.get(S + '/domain', (req, res) => {
   const nl = req.nl, base = PLATFORM_DOMAIN();
   const verified = !!nl.domain_verified_at;
-  const target = process.env.CUSTOM_DOMAIN_TARGET || 'cname.' + base;
-  const ip = process.env.CUSTOM_DOMAIN_IP || '';
+  const target = dnsTarget(), ip = dnsIp();
   shell(req, res, 'domain', '도메인', `
 <form class="card" method="post" action="${here(req, 'domain/subdomain')}">
 <b>${base} 주소</b><p class="mute">별도 도메인 없이 바로 쓸 수 있는 무료 주소예요.</p>
@@ -85,9 +88,22 @@ ${rec('TXT', '_lett-verify', 'lett-verify=' + nl.domain_token)}
 ${nl.custom_domain.split('.').length > 2 ? rec('CNAME', nl.custom_domain.split('.')[0], target) : (ip ? rec('A', '@', ip) : '') + rec('CNAME', 'www', target)}
 </tbody></table>
 <p class="mute">TXT 레코드는 도메인 소유 확인용이고, ${nl.custom_domain.split('.').length > 2 ? 'CNAME은 하위 도메인을 lett.로 연결' : 'A(또는 CNAME) 레코드는 접속을 lett.로 연결'}합니다. Hostinger의 이름 칸에는 도메인 전체가 아니라 위 이름만 입력하세요.</p>
+<p class="mute" style="margin:0 0 10px">DNS가 반영됐는지 전 세계 서버에서 미리 확인해 볼 수 있어요:
+<a href="${dnsCheckUrl('TXT', '_lett-verify.' + nl.custom_domain)}" target="_blank" rel="noopener">TXT 확인 ↗</a> ·
+<a href="${dnsCheckUrl(nl.custom_domain.split('.').length > 2 ? 'CNAME' : 'A', nl.custom_domain)}" target="_blank" rel="noopener">${nl.custom_domain.split('.').length > 2 ? 'CNAME' : 'A'} 확인 ↗</a> (dnschecker.org)</p>
 <div class="row"><form method="post" action="${here(req, 'domain/verify')}" style="margin:0"><button class="primary">연결 확인</button></form>
 <form method="post" action="${here(req, 'domain/remove')}" style="margin:0" onsubmit="return confirm('커스텀 도메인 연결을 해제할까요?')"><button class="danger">연결 해제</button></form></div>`
-    : `<form method="post" action="${here(req, 'domain/custom')}" class="row nowrap" style="margin-top:8px"><input name="domain" placeholder="news.mysite.com" required maxlength="120" style="max-width:320px"><button class="primary">도메인 연결</button></form>`}
+    : `<form method="post" action="${here(req, 'domain/custom')}" class="row nowrap" style="margin-top:8px"><input name="domain" placeholder="news.mysite.com" required maxlength="120" style="max-width:320px"><button class="primary">도메인 연결</button></form>
+<h3 style="margin:22px 0 8px">연결 순서 (Hostinger 기준)</h3>
+<ol class="mute" style="line-height:1.8;padding-left:20px;margin-top:0">
+<li>위 칸에 연결할 도메인을 입력하고 <b>도메인 연결</b>을 누르세요. 그러면 내 도메인에 맞는 DNS 레코드 값이 여기에 나타납니다.</li>
+<li><a href="https://hpanel.hostinger.com/" target="_blank" rel="noopener">hPanel</a> → <b>도메인</b> → 내 도메인 → <b>DNS / 네임서버</b> → <b>DNS 레코드</b>에서 아래와 같은 레코드를 추가하세요.</li>
+<li>저장 후 반영까지 몇 분~24시간이 걸립니다. 이 화면으로 돌아와 <b>연결 확인</b>을 누르면 연결이 끝나요.</li></ol>
+<table><thead><tr><th>용도</th><th>유형</th><th>이름(호스트)</th><th>값</th></tr></thead><tbody>
+<tr><td>소유 확인</td><td><b>TXT</b></td><td><code>_lett-verify</code></td><td class="mute">도메인 입력 후 표시되는 값</td></tr>
+<tr><td>하위 도메인 연결<br><span class="mute">(news.mysite.com)</span></td><td><b>CNAME</b></td><td><code>news</code></td><td><code>${h(dnsTarget())}</code></td></tr>
+<tr><td>루트 도메인 연결<br><span class="mute">(mysite.com)</span></td><td><b>A</b></td><td><code>@</code></td><td><code>${h(dnsIp())}</code></td></tr></tbody></table>
+<p class="mute">Hostinger의 이름 칸에는 도메인 전체가 아니라 위의 이름만 입력하세요. 같은 이름의 기존 A·CNAME 레코드가 있으면 먼저 삭제해야 합니다. 도메인이 없다면 위의 Hostinger 버튼으로 먼저 구입하세요.</p>`}
 </div>`);
 });
 
@@ -111,6 +127,23 @@ workspace.post(S + '/domain/custom', async (req, res) => {
   to('도메인을 등록했습니다. 아래 DNS 레코드를 설정해 주세요.');
 });
 
+// Vercel 프로젝트에 도메인 추가/제거 (VERCEL_TOKEN·VERCEL_PROJECT_ID 가 있을 때만). 없으면 수동으로 Vercel 에 추가해야 한다
+const vercelOn = () => !!(process.env.VERCEL_TOKEN && process.env.VERCEL_PROJECT_ID);
+async function vercelDomain(method, domain) {
+  const q = process.env.VERCEL_TEAM_ID ? '?teamId=' + encodeURIComponent(process.env.VERCEL_TEAM_ID) : '';
+  const base = `https://api.vercel.com/v${method === 'POST' ? 10 : 9}/projects/${encodeURIComponent(process.env.VERCEL_PROJECT_ID)}/domains`;
+  const r = await fetch(method === 'POST' ? base + q : `${base}/${encodeURIComponent(domain)}${q}`, {
+    method, headers: { Authorization: 'Bearer ' + process.env.VERCEL_TOKEN, 'Content-Type': 'application/json' },
+    body: method === 'POST' ? JSON.stringify({ name: domain }) : undefined, signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) return '';
+  const code = j.error?.code || '';
+  if (method === 'POST' && (code === 'domain_already_in_project' || r.status === 409 && /already.*(this|your) project/i.test(j.error?.message || ''))) return '';
+  if (method === 'DELETE' && r.status === 404) return '';
+  console.error('Vercel 도메인 API 실패', method, domain, r.status, code, j.error?.message);
+  return code === 'domain_already_in_use' || code === 'forbidden' ? (j.error?.message || code) : `Vercel 연동 오류 (${r.status} ${code})`;
+}
+
 workspace.post(S + '/domain/verify', async (req, res) => {
   const nl = req.nl, to = (m) => back(res, here(req, 'domain'), m);
   if (!nl.custom_domain) return to('연결된 도메인이 없습니다.');
@@ -118,11 +151,16 @@ workspace.post(S + '/domain/verify', async (req, res) => {
   try { txt = (await dns.resolveTxt('_lett-verify.' + nl.custom_domain)).map((r) => r.join('')); }
   catch { return to('TXT 레코드를 찾지 못했습니다. DNS 반영에는 시간이 걸리니 잠시 후 다시 확인해 주세요.'); }
   if (!txt.includes('lett-verify=' + nl.domain_token)) return to('TXT 레코드 값이 일치하지 않습니다. 값을 다시 확인해 주세요.');
+  if (vercelOn()) {
+    const err = await vercelDomain('POST', nl.custom_domain).catch((e) => { console.error('Vercel 도메인 API 오류', e.message); return 'Vercel에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'; });
+    if (err) return to('도메인 소유는 확인했지만 서버에 도메인을 추가하지 못했습니다: ' + err);
+  }
   await db.prepare('UPDATE newsletters SET domain_verified_at=? WHERE id=?').run(now(), nl.id);
-  to('도메인 소유를 확인했습니다. 이제 이 도메인으로 접속할 수 있어요.');
+  to(vercelOn() ? '도메인을 연결했습니다. HTTPS 인증서 발급에 몇 분 걸릴 수 있어요.' : '도메인 소유를 확인했습니다. 이제 이 도메인으로 접속할 수 있어요.');
 });
 
 workspace.post(S + '/domain/remove', async (req, res) => {
+  if (vercelOn() && req.nl.custom_domain && req.nl.domain_verified_at) await vercelDomain('DELETE', req.nl.custom_domain).catch((e) => console.error('Vercel 도메인 제거 오류', e.message));
   await db.prepare("UPDATE newsletters SET custom_domain='', domain_token='', domain_verified_at=NULL WHERE id=?").run(req.nl.id);
   back(res, here(req, 'domain'), '연결을 해제했습니다.');
 });
