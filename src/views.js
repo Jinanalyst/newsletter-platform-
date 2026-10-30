@@ -186,6 +186,7 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <span class="sp"></span><a href="/n/${h(nl.slug)}" target="_blank">공개 페이지 ↗</a>${logout}</nav>`;
   } else if (user) {
     nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><a href="/app" class="${active === 'app' ? 'on' : ''}">${t('내 뉴스레터')}</a>
+<a href="/create" class="${active === 'create' ? 'on' : ''}">${t('크리에이트')}</a>
 <a href="/app/profile" class="${active === 'profile' ? 'on' : ''}">${t('프로필')}</a><span class="sp"></span><span class="mute">${h(user.name || user.email)}</span>${logout}</nav>`;
   } else {
     nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="sp"></span><a href="/login">${t('로그인')}</a><a class="btn primary sm" href="/signup">${t('시작하기')}</a></nav>`;

@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 6; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 7; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -212,6 +212,32 @@ CREATE TABLE IF NOT EXISTS plan_orders (
   paid_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_porder_user ON plan_orders(user_id, id);
+CREATE TABLE IF NOT EXISTS courses (
+  id SERIAL PRIMARY KEY,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'course',
+  title TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  thumbnail TEXT NOT NULL DEFAULT '',
+  pricing TEXT NOT NULL DEFAULT 'once',
+  price INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_course_owner ON courses(owner_id, id);
+CREATE TABLE IF NOT EXISTS course_items (
+  id SERIAL PRIMARY KEY,
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  pos INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'video',
+  file TEXT NOT NULL DEFAULT '',
+  file_name TEXT NOT NULL DEFAULT '',
+  size BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_citem_course ON course_items(course_id, pos);
 `;
 
 // ---------- 드라이버 ----------

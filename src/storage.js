@@ -48,3 +48,38 @@ export async function saveImage(buf, ext, mime) {
   writeFileSync(`uploads/${name}`, buf);
   return `/uploads/${name}`;
 }
+
+// ---------- 강의 영상·자료 (비공개) ----------
+// Vercel 함수는 요청 본문이 4.5MB 로 제한되므로 영상은 서버를 거치지 않는다.
+//  - 배포: 서버가 Supabase 서명 업로드 주소만 발급 → 브라우저가 Storage 로 직접 PUT. 재생도 짧게 유효한 서명 주소로만.
+//  - 로컬 개발: 서버가 data/media/ 에 직접 저장
+const MEDIA_BUCKET = () => process.env.SUPABASE_MEDIA_BUCKET || 'course-media';
+const sbHeaders = () => ({ Authorization: `Bearer ${KEY()}`, apikey: KEY(), 'Content-Type': 'application/json' });
+export const MEDIA_DIR = 'data/media';
+
+let mediaBucketReady;
+const ensureMediaBucket = () => (mediaBucketReady ??= fetch(`${BASE()}/storage/v1/bucket`, {
+  method: 'POST', headers: sbHeaders(), body: JSON.stringify({ id: MEDIA_BUCKET(), name: MEDIA_BUCKET(), public: false }),
+}).then(() => true, () => false)); // 이미 있으면 오류 응답이 오지만 무시한다
+
+// → { url, headers } : 브라우저가 이 주소로 파일을 PUT 한다
+export async function createMediaUpload(name, mime) {
+  if (storageRemote()) {
+    await ensureMediaBucket();
+    const r = await fetch(`${BASE()}/storage/v1/object/upload/sign/${MEDIA_BUCKET()}/${name}`, { method: 'POST', headers: sbHeaders(), body: '{}', signal: AbortSignal.timeout(15_000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.url) { console.error('업로드 주소 발급 실패', r.status, JSON.stringify(j)); throw new Error('업로드를 시작하지 못했습니다. 저장소 설정을 확인하세요.'); }
+    return { url: `${BASE()}/storage/v1${j.url}`, headers: { 'Content-Type': mime } };
+  }
+  if (process.env.VERCEL) throw new Error('저장소가 설정되지 않았습니다. 환경 변수 SUPABASE_SERVICE_ROLE_KEY 를 설정하세요.');
+  mkdirSync(MEDIA_DIR, { recursive: true });
+  return { url: `/create/upload/${name}`, headers: { 'Content-Type': 'application/octet-stream' } };
+}
+
+// 원격 저장소의 5분짜리 재생·다운로드 주소 (로컬 개발이면 null)
+export async function signedMediaUrl(name, seconds = 300) {
+  if (!storageRemote()) return null;
+  const r = await fetch(`${BASE()}/storage/v1/object/sign/${MEDIA_BUCKET()}/${name}`, { method: 'POST', headers: sbHeaders(), body: JSON.stringify({ expiresIn: seconds }), signal: AbortSignal.timeout(15_000) });
+  const j = await r.json().catch(() => ({}));
+  return r.ok && j.signedURL ? `${BASE()}/storage/v1${j.signedURL}` : null;
+}
