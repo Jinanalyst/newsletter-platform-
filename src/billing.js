@@ -38,27 +38,28 @@ const gone = (res) => res.status(404).page('없음', '<h1>찾을 수 없습니�
 
 // ---------- 유료 구독 신청 ----------
 billing.get('/n/:slug/upgrade', async (req, res) => {
+  const t = req.t, loc = req.lang === 'zh' ? 'zh-CN' : req.lang;
   const nl = await getNl(req.params.slug);
   if (!nl) return gone(res);
   const back = `<p><a href="/n/${h(nl.slug)}">← ${h(nl.name)}</a></p>`;
-  if (!hasPaid(nl)) return res.page('유료 구독', `<h1>${h(nl.name)}</h1><p>이 뉴스레터는 아직 유료 구독을 운영하지 않습니다.</p>${back}`);
+  if (!hasPaid(nl)) return res.page(t('유료 구독'), `<h1>${h(nl.name)}</h1><p>${t('이 뉴스레터는 아직 유료 구독을 운영하지 않습니다.')}</p>${back}`);
   const sub = await activeSub(nl, req.query.t);
   if (!sub) {
-    return res.page('유료 구독', `<h1>유료 구독</h1><p>구독 중인 이메일 주소로 전용 링크를 보내드립니다.</p>
-<form class="card" method="post" action="/n/${h(nl.slug)}/upgrade/link"><label>이메일</label><input type="email" name="email" required>
-<p><button class="primary">링크 받기</button></p></form><p class="mute">아직 구독 전이라면 먼저 <a href="/n/${h(nl.slug)}">무료로 구독</a>해 주세요.</p>${back}`, { msg: req.query.m });
+    return res.page(t('유료 구독'), `<h1>${t('유료 구독')}</h1><p>${t('구독 중인 이메일 주소로 전용 링크를 보내드립니다.')}</p>
+<form class="card" method="post" action="/n/${h(nl.slug)}/upgrade/link"><label>${t('이메일')}</label><input type="email" name="email" required>
+<p><button class="primary">${t('링크 받기')}</button></p></form><p class="mute">${t('아직 구독 전이라면 먼저 {a}해 주세요.', { a: `<a href="/n/${h(nl.slug)}">${t('무료로 구독')}</a>` })}</p>${back}`, { msg: req.query.m });
   }
   if (isPaid(sub)) {
-    return res.page('유료 구독', `<h1>유료 구독 중입니다</h1>
-<p class="mute">${sub.paid_until ? `이용 기간: ${new Date(sub.paid_until).toLocaleDateString('ko-KR')}까지` : '발행자가 유료 혜택을 제공했습니다.'}</p>
-${sub.stripe_customer && stripeConfigured() ? `<form method="post" action="/n/${h(nl.slug)}/billing"><input type="hidden" name="t" value="${h(sub.token)}"><button>결제 관리 / 해지</button></form>` : ''}${back}`);
+    return res.page(t('유료 구독'), `<h1>${t('유료 구독 중입니다')}</h1>
+<p class="mute">${sub.paid_until ? t('이용 기간: {d}까지', { d: new Date(sub.paid_until).toLocaleDateString(loc) }) : t('발행자가 유료 혜택을 제공했습니다.')}</p>
+${sub.stripe_customer && stripeConfigured() ? `<form method="post" action="/n/${h(nl.slug)}/billing"><input type="hidden" name="t" value="${h(sub.token)}"><button>${t('결제 관리 / 해지')}</button></form>` : ''}${back}`);
   }
   const plan = (p, price, label, note) => price > 0 ? `<form class="card" method="post" action="/n/${h(nl.slug)}/checkout"><input type="hidden" name="t" value="${h(sub.token)}">
 <input type="hidden" name="plan" value="${p}"><b>${label}</b> <span style="font-size:22px">${won(price)}</span> <span class="mute">${note}</span>
-<p><button class="primary" ${stripeConfigured() ? '' : 'disabled'}>${label}로 구독</button></p></form>` : '';
-  res.page('유료 구독', `<h1>${h(nl.name)} 유료 구독</h1><p>유료 구독자 전용 글을 읽고, 발행자를 직접 응원할 수 있습니다.</p>
-${stripeConfigured() ? '' : '<div class="msg">결제 시스템이 아직 연결되지 않았습니다. (STRIPE_SECRET_KEY 미설정)</div>'}
-${plan('monthly', nl.price_monthly, '월간', '/ 월')}${plan('yearly', nl.price_yearly, '연간', '/ 년')}${back}`, { msg: req.query.m });
+<p><button class="primary" ${stripeConfigured() ? '' : 'disabled'}>${t('{label}로 구독', { label })}</button></p></form>` : '';
+  res.page(t('유료 구독'), `<h1>${t('{name} 유료 구독', { name: h(nl.name) })}</h1><p>${t('유료 구독자 전용 글을 읽고, 발행자를 직접 응원할 수 있습니다.')}</p>
+${stripeConfigured() ? '' : `<div class="msg">${t('결제 시스템이 아직 연결되지 않았습니다.')} (STRIPE_SECRET_KEY)</div>`}
+${plan('monthly', nl.price_monthly, t('월간'), '/ ' + t('월'))}${plan('yearly', nl.price_yearly, t('연간'), '/ ' + t('년'))}${back}`, { msg: req.query.m });
 });
 
 // 이메일 열거 방지: 항상 같은 응답
@@ -117,7 +118,7 @@ billing.post('/n/:slug/billing', async (req, res) => {
 });
 
 billing.get('/n/:slug/upgrade/done', (req, res) =>
-  res.page('결제 완료', '<h1>감사합니다</h1><p>결제가 확인되면 곧 유료 구독이 활성화됩니다. (보통 몇 초 이내)</p>'));
+  res.page(req.t('결제 완료'), `<h1>${req.t('감사합니다')}</h1><p>${req.t('결제가 확인되면 곧 유료 구독이 활성화됩니다. (보통 몇 초 이내)')}</p>`));
 
 // ---------- Stripe 웹훅 (app.js에서 raw body로 연결) ----------
 export function verifySignature(raw, header, secret, tolerance = 300) {

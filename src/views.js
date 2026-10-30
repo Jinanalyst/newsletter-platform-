@@ -198,10 +198,13 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <title>${h(title)}</title>${FAVICON}${head}
 <style>${CSS}</style></head><body>${nav}
 <div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>${t('이메일 인증이 필요합니다.')}</b> ${t('인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.')}
-<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${nl ? '' : `
-<footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>${langSwitcher(lang)}</div>
-<div class="pfb"><span class="pfl"><a href="/pricing">${t('요금제')}</a><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a></span>${bizInfo(t)}<div class="pfc">© ${new Date().getFullYear()} lett.</div></div></footer>`}</body></html>`;
+<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${nl ? '' : platformFooter(t, lang)}</body></html>`;
 }
+
+// 플랫폼 공통 푸터: 언어 선택 · 요금제/개인정보/환불 링크 · 사업자 정보 (공개 뉴스레터 페이지에도 붙는다)
+export const platformFooter = (t, lang) => `
+<footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>${langSwitcher(lang)}</div>
+<div class="pfb"><span class="pfl"><a href="/pricing">${t('요금제')}</a><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a></span>${bizInfo(t)}<div class="pfc">© ${new Date().getFullYear()} lett.</div></div></footer>`;
 
 export const fmt = (iso, lang = 'ko') => (iso ? new Date(iso).toLocaleString(LOCALES[lang] || 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 export const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 + '%' : '—');

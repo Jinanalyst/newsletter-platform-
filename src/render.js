@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import { db, baseUrl, isPaid, hasPaid, publicUrl } from './db.js';
+import { tr } from './i18n.js';
 
 export const h = (s = '') =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -51,13 +52,14 @@ function gate(md, post, canRead) {
 }
 export const isGated = (post) => post.audience === 'paid' || post.body_md.includes(MARK);
 
-export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRead = false } = {}) {
+export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRead = false, lang = 'ko' } = {}) {
   const base = baseUrl();
+  const t = tr(mode === 'web' ? lang : 'ko'); // 웹 글 페이지만 방문자 언어로, 메일은 한국어
   const readable = mode === 'test' || (mode === 'email' ? isPaid(sub) : canRead);
   const upgrade = `${base}/n/${nl.slug}/upgrade${sub?.token ? `?t=${sub.token}` : ''}`;
   let body = marked.parse(personalize(gate(post.body_md, post, readable), mode === 'web' ? null : sub));
   body = body.replace('<p>[[LOCK]]</p>', `<div style="border:1px solid #e5e5e5;border-radius:6px;padding:18px;background:#fafafa;text-align:center">
-<b>여기부터는 유료 구독자 전용입니다</b><br>${hasPaid(nl) ? `<a href="${upgrade}">유료 구독하고 계속 읽기 →</a>` : '발행자가 아직 유료 구독을 열지 않았습니다.'}</div>`);
+<b>${t('여기부터는 유료 구독자 전용입니다')}</b><br>${hasPaid(nl) ? `<a href="${upgrade}">${t('유료 구독하고 계속 읽기 →')}</a>` : t('발행자가 아직 유료 구독을 열지 않았습니다.')}</div>`);
   // 상대 경로 이미지(/uploads/..)는 메일에서도 보이도록 절대 경로로
   body = body.replace(/src="\/uploads\//g, `src="${base}/uploads/`);
 
@@ -78,11 +80,11 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
     : '';
   const unsub = sub?.token ? `${base}/unsubscribe/${sub.token}` : `${base}/n/${nl.slug}`;
   const pageUrl = publicUrl(nl, `/p/${post.id}`);
-  const share = `<p style="font-size:14px">공유: <a href="#" onclick="navigator.clipboard.writeText('${pageUrl}');this.textContent='복사됨 ✓';return false">링크 복사</a> ·
+  const share = `<p style="font-size:14px">${t('공유:')} <a href="#" onclick="navigator.clipboard.writeText('${pageUrl}');this.textContent='${t('복사됨 ✓')}';return false">${t('링크 복사')}</a> ·
 <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(post.subject)}" target="_blank" rel="noopener">X</a> ·
 <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}" target="_blank" rel="noopener">Facebook</a></p>`;
   const foot = mode === 'web'
-    ? `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">${post.id ? share : ''}<p style="text-align:center;margin:24px 0 8px"><a href="${base}/n/${h(nl.slug)}" style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:999px">${h(nl.name)} 구독하기</a></p>`
+    ? `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">${post.id ? share : ''}<p style="text-align:center;margin:24px 0 8px"><a href="${base}/n/${h(nl.slug)}" style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 28px;border-radius:999px">${t('{name} 구독하기', { name: h(nl.name) })}</a></p>`
     : `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">
 <div style="font-size:13px;color:#888"><p>${h(nl.name)}의 구독자이기 때문에 받은 메일입니다.<br>
 ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게 추천하기</a> · ` : ''}${sub?.token && hasPaid(nl) && !isPaid(sub) ? `<a href="${upgrade}" style="color:#888">유료 구독</a> · ` : ''}<a href="${unsub}" style="color:#888">구독 해지</a></p></div>`;

@@ -8,7 +8,7 @@ import { landingPage } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
 import { renderPost, h, personalize } from './render.js';
-import { page, fmt } from './views.js';
+import { page, fmt, platformFooter } from './views.js';
 import { tr } from './i18n.js';
 import { NOTE_SELECT } from './feed.js';
 import { snsLinks } from './sns.js';
@@ -266,24 +266,25 @@ ${hasPaid(nl) ? `<p class="mute">${t('유료 구독({price})으로 전용 글을
 ${pickedCourses.length ? `<section class="lp-courses"><h2>${t('강의·상품')}</h2><div class="lc-grid">${pickedCourses.map((c) => `<a class="lc" href="/c/${c.id}"><div class="th"${c.thumbnail ? ` style="background-image:url('${h(c.thumbnail)}')"` : ''}>${c.thumbnail ? '' : '▶'}</div><div class="bd"><b>${h(c.title)}</b><span class="pr">${priceLabel(c, t)}</span></div></a>`).join('')}</div></section>` : ''}
 </main>
 <footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a> · ${t('{a}로 만든 뉴스레터', { a: '<a href="/">lett.</a>' })}</footer></div>
-${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id="lpopen">✎ 레이아웃 편집</button>
+${platformFooter(t, req.lang)}${canEdit ? '<div style="height:72px"></div>' : ''}
+${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id="lpopen">${t('✎ 레이아웃 편집')}</button>
 <div class="panel" id="lppanel" hidden>
-<div class="grp"><span>너비</span><div class="seg2"><button type="button" data-k="width" data-v="narrow">좁게</button><button type="button" data-k="width" data-v="normal">보통</button><button type="button" data-k="width" data-v="wide">넓게</button></div></div>
-<div class="grp"><span>상단 배치</span><div class="seg2"><button type="button" data-k="split" data-v="stack">위아래</button><button type="button" data-k="split" data-v="left">소개 왼쪽</button><button type="button" data-k="split" data-v="right">소개 오른쪽</button></div></div>
-<div class="grp"><span>상단 높이</span><div class="seg2"><button type="button" data-k="hero" data-v="compact">낮게</button><button type="button" data-k="hero" data-v="normal">보통</button><button type="button" data-k="hero" data-v="tall">높게</button></div></div>
-<div class="grp"><span>글 목록</span><div class="seg2"><button type="button" data-k="view" data-v="list">목록</button><button type="button" data-k="view" data-v="grid">카드</button></div></div>
-<div class="cpick" id="lpcourses"><span>강의·상품 표시</span>${myCourses.map((c) => `<button type="button" class="cch" data-c="${c.id}"${c.status === 'published' ? '' : ' disabled title="게시한 뒤에 선택할 수 있어요"'}>${h(c.title || '제목 없음')}${c.status === 'published' ? '' : ' (미게시)'}</button>`).join('')}<a href="/create" target="_blank">${myCourses.length ? '+ 새로 만들기' : '+ 강의·상품 만들기'}</a></div>
-<div class="grp"><button type="button" class="save" id="lpsave">저장</button><button type="button" class="cancel" id="lpcancel">취소</button></div>
-<div class="tip">강의·상품은 선택한 순서대로 아카이브 아래에 표시돼요. 글을 끌어서 순서를 바꾸고(모바일은 ↑↓), 숨기기로 아카이브에서 뺄 수 있어요. 숨겨도 글 주소로는 계속 열립니다.</div></div></div>
+<div class="grp"><span>${t('너비')}</span><div class="seg2"><button type="button" data-k="width" data-v="narrow">${t('좁게')}</button><button type="button" data-k="width" data-v="normal">${t('보통')}</button><button type="button" data-k="width" data-v="wide">${t('넓게')}</button></div></div>
+<div class="grp"><span>${t('상단 배치')}</span><div class="seg2"><button type="button" data-k="split" data-v="stack">${t('위아래')}</button><button type="button" data-k="split" data-v="left">${t('소개 왼쪽')}</button><button type="button" data-k="split" data-v="right">${t('소개 오른쪽')}</button></div></div>
+<div class="grp"><span>${t('상단 높이')}</span><div class="seg2"><button type="button" data-k="hero" data-v="compact">${t('낮게')}</button><button type="button" data-k="hero" data-v="normal">${t('보통')}</button><button type="button" data-k="hero" data-v="tall">${t('높게')}</button></div></div>
+<div class="grp"><span>${t('글 목록')}</span><div class="seg2"><button type="button" data-k="view" data-v="list">${t('목록')}</button><button type="button" data-k="view" data-v="grid">${t('카드')}</button></div></div>
+<div class="cpick" id="lpcourses"><span>${t('강의·상품 표시')}</span>${myCourses.map((c) => `<button type="button" class="cch" data-c="${c.id}"${c.status === 'published' ? '' : ' disabled title="' + t('게시한 뒤에 선택할 수 있어요') + '"'}>${h(c.title || t('제목 없음'))}${c.status === 'published' ? '' : ' ' + t('(미게시)')}</button>`).join('')}<a href="/create" target="_blank">${myCourses.length ? t('+ 새로 만들기') : t('+ 강의·상품 만들기')}</a></div>
+<div class="grp"><button type="button" class="save" id="lpsave">${t('저장')}</button><button type="button" class="cancel" id="lpcancel">${t('취소')}</button></div>
+<div class="tip">${t('강의·상품은 선택한 순서대로 아카이브 아래에 표시돼요. 글을 끌어서 순서를 바꾸고(모바일은 ↑↓), 숨기기로 아카이브에서 뺄 수 있어요. 숨겨도 글 주소로는 계속 열립니다.')}</div></div></div>
 <script>var LAY=${JSON.stringify({ width: lay.width, hero: lay.hero, view: lay.view, split: lay.split, courses: lay.courses, nid: nl.id })};
 (function(){var root=document.getElementById('lp'),list=document.getElementById('lplist'),panel=document.getElementById('lppanel'),open=document.getElementById('lpopen'),cur={width:LAY.width,hero:LAY.hero,view:LAY.view,split:LAY.split},sel=LAY.courses.slice(),editing=false,drag=null;
 function apply(){root.className='lp-w-'+cur.width+' lp-h-'+cur.hero+' lp-v-'+cur.view+' lp-s-'+cur.split;[].forEach.call(panel.querySelectorAll('[data-k]'),function(b){b.classList.toggle('on',cur[b.dataset.k]===b.dataset.v)})}
 function paintC(){[].forEach.call(document.querySelectorAll('#lpcourses .cch'),function(b){b.classList.toggle('on',sel.indexOf(+b.dataset.c)>=0)})}
 document.getElementById('lpcourses').addEventListener('click',function(e){var b=e.target.closest('.cch');if(!b||b.disabled)return;var id=+b.dataset.c,i=sel.indexOf(id);if(i>=0)sel.splice(i,1);else sel.push(id);paintC()});
 function items(){return list?[].slice.call(list.querySelectorAll('.item')):[]}
-function label(it){var b=it.querySelector('[data-a=eye]');if(b)b.textContent=it.classList.contains('off')?'표시':'숨기기'}
+function label(it){var b=it.querySelector('[data-a=eye]');if(b)b.textContent=it.classList.contains('off')?${JSON.stringify(t('표시'))}:${JSON.stringify(t('숨기기'))}}
 function start(){editing=true;paintC();document.body.classList.add('lp-editing');open.hidden=true;panel.hidden=false;apply();
-items().forEach(function(it){it.hidden=false;it.draggable=true;var c=document.createElement('span');c.className='ictl';c.innerHTML='<button type="button" data-a="up">↑</button><button type="button" data-a="dn">↓</button><button type="button" data-a="eye">숨기기</button>';it.insertBefore(c,it.firstChild);label(it)})}
+items().forEach(function(it){it.hidden=false;it.draggable=true;var c=document.createElement('span');c.className='ictl';c.innerHTML='<button type="button" data-a="up">↑</button><button type="button" data-a="dn">↓</button><button type="button" data-a="eye">${t('숨기기')}</button>';it.insertBefore(c,it.firstChild);label(it)})}
 open.onclick=start;
 document.getElementById('lpcancel').onclick=function(){location.reload()};
 panel.addEventListener('click',function(e){var b=e.target.closest('[data-k]');if(b){cur[b.dataset.k]=b.dataset.v;apply()}});
@@ -293,9 +294,9 @@ list.addEventListener('dragstart',function(e){if(!editing)return;drag=e.target.c
 list.addEventListener('dragover',function(e){if(!drag)return;e.preventDefault();var it=e.target.closest('.item');items().forEach(function(x){x.classList.remove('over','dn')});if(it&&it!==drag){var r=it.getBoundingClientRect(),after=root.classList.contains('lp-v-grid')?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;it.classList.add('over');if(after)it.classList.add('dn')}});
 list.addEventListener('drop',function(e){if(!drag)return;e.preventDefault();var it=e.target.closest('.item');if(it&&it!==drag){var r=it.getBoundingClientRect(),after=root.classList.contains('lp-v-grid')?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;list.insertBefore(drag,after?it.nextElementSibling:it)}});
 list.addEventListener('dragend',function(){drag=null;items().forEach(function(x){x.classList.remove('over','dn')})})}
-document.getElementById('lpsave').onclick=function(){var b=this;b.disabled=true;b.textContent='저장 중…';
+document.getElementById('lpsave').onclick=function(){var b=this;b.disabled=true;b.textContent=${JSON.stringify(t('저장 중…'))};
 var its=items();fetch('/app/n/'+LAY.nid+'/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({width:cur.width,hero:cur.hero,view:cur.view,split:cur.split,courses:sel,order:its.map(function(i){return +i.dataset.id}),hidden:its.filter(function(i){return i.classList.contains('off')}).map(function(i){return +i.dataset.id})})})
-.then(function(r){if(!r.ok)throw 0;location.reload()},function(){b.disabled=false;b.textContent='저장';alert('저장하지 못했습니다. 다시 시도해 주세요.')})}})();</script>` : ''}
+.then(function(r){if(!r.ok)throw 0;location.reload()},function(){b.disabled=false;b.textContent=${JSON.stringify(t('저장'))};alert(${JSON.stringify(t('저장하지 못했습니다. 다시 시도해 주세요.'))})})}})();</script>` : ''}
 <script>
 (function(){var u=${JSON.stringify(pageUrl)},t=${JSON.stringify(nl.name)};
 var s=document.getElementById('lpshare');if(!navigator.share)s.style.display='none';else s.onclick=function(){navigator.share({title:t,url:u}).catch(function(){})};
@@ -338,7 +339,7 @@ pub.get('/n/:slug/p/:id', async (req, res) => {
   // 메일에서 온 구독자 토큰(?t=)이 유료 구독자이면 전체 공개
   const viewer = req.query.t && await db.prepare("SELECT * FROM subscribers WHERE token=? AND newsletter_id=? AND status='active'").get(String(req.query.t), nl.id);
   await recordView(req, nl, post.id, viewer?.id || 0);
-  res.send(await renderPost(post, nl, { mode: 'web', canRead: isPaid(viewer) }));
+  res.send(await renderPost(post, nl, { mode: 'web', canRead: isPaid(viewer), lang: req.lang }));
 });
 
 // 구독자 개인 페이지: 추천 링크와 현황
