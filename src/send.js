@@ -79,6 +79,8 @@ export async function sendTest(post, nl, user) {
 
 // ---------- 자동화: 시리즈 ----------
 const addDays = (d) => new Date(Date.now() + d * 864e5).toISOString();
+// 단계의 발송 시각: 달력으로 날짜를 지정했으면 그 시각, 아니면 "며칠 뒤"
+const stepAt = (st) => st.send_at || addDays(st.delay_days);
 
 // 구독 확정 시 호출: 'subscribe' 트리거 시리즈에 등록
 export async function enrollSubscriber(sub) {
@@ -86,7 +88,7 @@ export async function enrollSubscriber(sub) {
   for (const s of list) {
     const first = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos LIMIT 1").get(s.id);
     if (first) await db.prepare('INSERT OR IGNORE INTO series_enroll(series_id,subscriber_id,next_pos,next_at) VALUES(?,?,?,?)')
-      .run(s.id, sub.id, first.step_pos, addDays(first.delay_days));
+      .run(s.id, sub.id, first.step_pos, stepAt(first));
   }
 }
 
@@ -102,9 +104,10 @@ export async function processSeries(budgetMs = 20_000) {
     const step = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' AND step_pos=?").get(e.series_id, e.next_pos);
     if (!sub || sub.status !== 'active' || !step) { await db.prepare('UPDATE series_enroll SET done=1 WHERE id=?').run(e.id); continue; }
     const ok = step.cond === 'paid' ? isPaid(sub) : step.cond === 'free' ? !isPaid(sub) : true; // 조건부 발송
-    if (ok && step.subject && step.body_md) await deliver(step, await db.prepare('SELECT * FROM newsletters WHERE id=?').get(sub.newsletter_id), sub);
+    const stale = !!step.send_at && new Date(step.send_at) < Date.now() - 864e5; // 지정한 날짜가 하루 넘게 지난 뒤 합류한 구독자는 이 메일을 건너뛴다
+    if (ok && !stale && step.subject && step.body_md) await deliver(step, await db.prepare('SELECT * FROM newsletters WHERE id=?').get(sub.newsletter_id), sub);
     const next = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' AND step_pos>? ORDER BY step_pos LIMIT 1").get(e.series_id, e.next_pos);
-    if (next) await db.prepare('UPDATE series_enroll SET next_pos=?, next_at=? WHERE id=? AND next_pos=?').run(next.step_pos, addDays(next.delay_days), e.id, e.next_pos);
+    if (next) await db.prepare('UPDATE series_enroll SET next_pos=?, next_at=? WHERE id=? AND next_pos=?').run(next.step_pos, stepAt(next), e.id, e.next_pos);
     else await db.prepare('UPDATE series_enroll SET done=1 WHERE id=?').run(e.id);
     handled++;
   }

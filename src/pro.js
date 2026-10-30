@@ -1,5 +1,6 @@
 // 발행자 영역 2단계: 수익 관리 · 자동화
 import { findNewsletter } from './access.js';
+import { parseLocal } from './editor.js';
 import { Router } from 'express';
 import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
 import { requireUser } from './auth.js';
@@ -60,6 +61,17 @@ pro.post('/app/n/:nid/revenue/pricing', async (req, res) => {
 
 // ================= 자동화 =================
 const COND = { '': '모든 구독자', free: '무료 구독자만', paid: '유료 구독자만' };
+// 단계의 발송 시점: 메일 간격(일) 또는 달력에서 날짜·시각 지정 + 대상 독자(전체·무료·유료)
+const sendFields = () => `<input type="hidden" name="tz" id="ftz"><div class="row" style="margin-top:10px"><span class="mute">발송</span>
+<select name="send_mode" id="fmode" style="width:auto"><option value="delay">메일 간격(일)</option><option value="date">날짜·시각 지정</option></select>
+<input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px"><input type="datetime-local" name="send_at" id="fat" style="width:auto" hidden></div>
+<div class="row" style="margin-top:8px"><span class="mute">대상</span><select name="cond" id="fcond" style="width:auto">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+<p class="mute" id="fnote" style="margin:8px 0 0;font-size:12.5px"></p>`;
+const SEND_JS = `function toLocal(iso){if(!iso)return '';var d=new Date(iso);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+function syncMode(){var dt=$('fmode').value==='date';$('fdelay').hidden=dt;$('fat').hidden=!dt;$('fat').required=dt;
+$('fnote').textContent=dt?'달력에서 고른 날짜·시각에 보내요. 그 시각이 하루 넘게 지난 뒤 합류한 구독자는 이 메일을 건너뜁니다.':'직전 메일을 보낸 뒤 며칠 뒤에 보내요. (첫 메일은 구독 후)'}
+function fillSend(iso){$('fmode').value=iso?'date':'delay';$('fat').value=toLocal(iso);syncMode()}
+$('fmode').addEventListener('change',syncMode);$('ftz').value=new Date().getTimezoneOffset();`;
 const POST_STATUS = { draft: '초안', scheduled: '예약', sent: '발행됨' };
 // "글" 탭에 있는 글(초안·예약·발행 모두) — 자동화 메일로 불러올 수 있다
 const listPosts = (nlId) => db.prepare("SELECT id, subject, status, sent_at, created_at FROM posts WHERE newsletter_id=? AND kind='post' AND subject<>'' ORDER BY id DESC LIMIT 100").all(nlId);
@@ -119,7 +131,7 @@ pro.get('/app/n/:nid/automation/:sid', async (req, res) => {
 @media(max-width:860px){.fm{grid-template-columns:1fr}.fpanel{position:static}}
 </style>
 <div class="fm"><div class="fmap" id="fmap"><div class="fs">구독 확정</div>
-${steps.map((p, i) => `<div class="fc"><i></i><span>${i ? `직전 메일 발송 후 ${p.delay_days}일` : p.delay_days ? `구독 후 ${p.delay_days}일` : '구독 즉시'}</span><i></i></div>
+${steps.map((p, i) => `<div class="fc"><i></i><span>${p.send_at ? `📅 ${new Date(p.send_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : i ? `직전 메일 발송 후 ${p.delay_days}일` : p.delay_days ? `구독 후 ${p.delay_days}일` : '구독 즉시'}</span><i></i></div>
 <div class="fn" draggable="false" data-id="${p.id}"><span class="hd" title="끌어서 순서 변경">⋮⋮</span><span class="no">${i + 1}</span>
 <span class="tx"><b>${h(p.subject || '(제목 없음)')}</b><small${p.subject && p.body_md ? '' : ' class="warn"'}>${p.subject && p.body_md ? COND[p.cond] || COND[''] : '제목·본문이 비어 있으면 발송되지 않아요'}</small></span>
 <span class="mv"><button type="button" class="up" aria-label="위로">▲</button><button type="button" class="dn" aria-label="아래로">▼</button></span></div>`).join('')}
@@ -127,19 +139,19 @@ ${steps.map((p, i) => `<div class="fc"><i></i><span>${i ? `직전 메일 발송 
 <details class="fadd" style="max-width:420px"><summary class="btn" style="display:inline-block;cursor:pointer">글에서 불러오기</summary><div style="margin-top:10px">${postPicker(nl, s, posts, '')}</div></details></div>
 <div class="fpanel"><form class="card" id="fform" method="post" style="margin:0" hidden>
 <div class="row"><b id="ftitle"></b><span class="grow"></span><a id="fstat" href="#">통계</a></div>
-<div class="row" style="margin-top:10px"><span class="mute">일수</span><input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px">
-<select name="cond" id="fcond" style="width:auto">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+${sendFields()}
 <label>제목</label><input name="subject" id="fsub" required>
 <label>본문 (마크다운, {{name}} 사용 가능)</label><textarea name="body_md" id="fbody" rows="12"></textarea>
 <div class="row" style="margin-top:10px"><button class="primary sm">저장</button><button type="submit" class="sm danger" id="fdel" onclick="return confirm('이 메일을 삭제할까요?')">메일 삭제</button></div></form>
 <p class="mute" id="fhint">왼쪽 흐름도에서 메일을 선택하세요.</p></div></div>
-<script>(function(){var D=${jsonForScript(steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay_days: p.delay_days, cond: p.cond })))},B='/app/n/${nl.id}/automation/${s.id}',
+<script>(function(){var D=${jsonForScript(steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay_days: p.delay_days, send_at: p.send_at, cond: p.cond })))},B='/app/n/${nl.id}/automation/${s.id}',
 map=document.getElementById('fmap'),f=document.getElementById('fform'),hint=document.getElementById('fhint');
 function $(i){return document.getElementById(i)}
+${SEND_JS}
 function nodes(){return [].slice.call(map.querySelectorAll('.fn'))}
 function sel(id){var d=D.filter(function(x){return x.id==id})[0];nodes().forEach(function(n){n.classList.toggle('sel',n.dataset.id==id)});if(!d){f.hidden=true;hint.hidden=false;return}
 f.hidden=false;hint.hidden=true;f.action=B+'/steps/'+d.id;$('ftitle').textContent='메일 '+(nodes().findIndex(function(n){return n.dataset.id==id})+1);$('fstat').href='/app/n/${nl.id}/posts/'+d.id+'/stats';
-$('fdelay').value=d.delay_days;$('fcond').value=d.cond||'';$('fsub').value=d.subject;$('fbody').value=d.body_md;$('fdel').formAction=B+'/steps/'+d.id+'/delete'}
+$('fdelay').value=d.delay_days;fillSend(d.send_at);$('fcond').value=d.cond||'';$('fsub').value=d.subject;$('fbody').value=d.body_md;$('fdel').formAction=B+'/steps/'+d.id+'/delete'}
 function save(){var ids=nodes().map(function(n){return n.dataset.id}).join(',');var cur=(map.querySelector('.fn.sel')||{dataset:{}}).dataset.id;
 fetch(B+'/reorder',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'order='+ids}).then(function(){location.href=B+(cur?'?step='+cur:'')}).catch(function(){location.reload()})}
 function put(n,ref){[n.previousElementSibling,n].forEach(function(el){map.insertBefore(el,ref)})}
@@ -160,9 +172,9 @@ var q=new URLSearchParams(location.search).get('step');sel(D.some(function(x){re
 pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
   const nl = req.nl, s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${nl.id}/automation`);
-  const steps = await db.prepare("SELECT id, subject, body_md, delay_days, cond FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
+  const steps = await db.prepare("SELECT id, subject, body_md, delay_days, send_at, cond FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
   const posts = await listPosts(nl.id);
-  const data = steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay: p.delay_days, cond: p.cond, condText: COND[p.cond] || COND[''] }));
+  const data = steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay: p.delay_days, sendAt: p.send_at, cond: p.cond, condText: COND[p.cond] || COND[''] }));
   res.page(s.name + ' 맵', `<div class="row"><h1 class="grow">${h(s.name)}</h1>
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}" class="row"><input type="hidden" name="back" value="map"><input name="name" value="${h(s.name)}" style="width:200px">
 <label style="margin:0"><input type="checkbox" name="active" value="1" style="width:auto" ${s.active ? 'checked' : ''}> 켜기</label><button class="sm">저장</button></form>
@@ -195,14 +207,14 @@ pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
 <div class="mmodal" id="pickmodal" hidden><div class="card"><div class="row"><b style="font-size:18px">글에서 불러오기</b><span class="grow"></span><button type="button" class="x" id="pickclose" aria-label="닫기">✕</button></div>${postPicker(nl, s, posts, 'map')}</div></div>
 <div class="mmodal" id="fmodal" hidden><form class="card" id="fform" method="post"><input type="hidden" name="back" value="map">
 <div class="row"><b id="ftitle" style="font-size:18px"></b><span class="grow"></span><a id="fstat" href="#">통계</a><button type="button" class="x" id="fclose" aria-label="닫기">✕</button></div>
-<div class="row" style="margin-top:10px"><span class="mute">일수</span><input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px">
-<select name="cond" id="fcond" style="width:auto">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+${sendFields()}
 <label>제목</label><input name="subject" id="fsub" required>
 <label>본문 (마크다운, {{name}} 사용 가능)</label><textarea name="body_md" id="fbody" rows="12"></textarea>
 <div class="row" style="margin-top:10px"><button class="primary sm">저장</button><button type="submit" class="sm danger" id="fdel" onclick="return confirm('이 메일을 삭제할까요?')">메일 삭제</button></div></form></div>
 <script>(function(){var S=${jsonForScript(data)},B='/app/n/${nl.id}/automation/${s.id}',KEY='fmap:${s.id}',W=290,H=118,SW=140,SH=60;
 var cv=document.getElementById('mcv'),svg=document.getElementById('msv'),NS='http://www.w3.org/2000/svg',pos={},els={},labels=[],f=document.getElementById('fform'),modal=document.getElementById('fmodal');
 function $(i){return document.getElementById(i)}
+${SEND_JS}
 try{pos=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){pos={}}
 function dflt(k,i){return k==='start'?[40,300]:[250+i*400,(i%2?190:330)]}
 function idx(k){return S.findIndex(function(d){return String(d.id)===String(k)})}
@@ -221,7 +233,7 @@ var keys=['start'].concat(S.map(function(d){return d.id})),mx=900,my=520;
 keys.forEach(function(k){var p=P(k),s=size(k);mx=Math.max(mx,p[0]+s[0]+80);my=Math.max(my,p[1]+(els[k]?els[k].offsetHeight:s[1])+80)});
 svg.setAttribute('width',mx);svg.setAttribute('height',my);
 for(var i=0;i<S.length;i++){var from=i?S[i-1].id:'start',a=anchor(from,'out'),b=anchor(S[i].id,'in'),p=document.createElementNS(NS,'path');p.setAttribute('d',curve(a,b));svg.insertBefore(p,svg.firstChild);
-var l=document.createElement('span');l.className='elb';l.style.left=(a[0]+b[0])/2+'px';l.style.top=(a[1]+b[1])/2+'px';l.textContent=i?'직전 발송 후 '+S[i].delay+'일':S[i].delay?'구독 후 '+S[i].delay+'일':'구독 즉시';cv.appendChild(l);labels.push(l)}}
+var l=document.createElement('span');l.className='elb';l.style.left=(a[0]+b[0])/2+'px';l.style.top=(a[1]+b[1])/2+'px';l.textContent=S[i].sendAt?'📅 '+new Date(S[i].sendAt).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):i?'직전 발송 후 '+S[i].delay+'일':S[i].delay?'구독 후 '+S[i].delay+'일':'구독 즉시';cv.appendChild(l);labels.push(l)}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(pos))}catch(e){}}
 function closeModal(){modal.hidden=true;$('pickmodal').hidden=true}
 $('pickopen').addEventListener('click',function(){$('pickmodal').hidden=false});$('pickclose').addEventListener('click',closeModal);$('pickmodal').addEventListener('pointerdown',function(e){if(e.target===$('pickmodal'))closeModal()});
@@ -229,7 +241,7 @@ $('pickopen').addEventListener('click',function(){$('pickmodal').hidden=false});
 function sel(id,open){var d=S[idx(id)];Object.keys(els).forEach(function(k){els[k].classList.toggle('sel',String(k)===String(id))});
 if(!d||!open){return}
 modal.hidden=false;f.action=B+'/steps/'+d.id;$('ftitle').textContent='메일 '+(idx(id)+1);$('fstat').href='/app/n/${nl.id}/posts/'+d.id+'/stats';
-$('fdelay').value=d.delay;$('fcond').value=d.cond||'';$('fsub').value=d.subject;$('fbody').value=d.body_md;$('fdel').formAction=B+'/steps/'+d.id+'/delete';
+$('fdelay').value=d.delay;fillSend(d.sendAt);$('fcond').value=d.cond||'';$('fsub').value=d.subject;$('fbody').value=d.body_md;$('fdel').formAction=B+'/steps/'+d.id+'/delete';
 try{history.replaceState(null,'',B+'/map?step='+d.id)}catch(e){}$('fsub').focus()}
 $('fclose').addEventListener('click',closeModal);modal.addEventListener('pointerdown',function(e){if(e.target===modal)closeModal()});document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()});
 // 카드 끌기(자유 배치). 거의 움직이지 않고 떼면 클릭으로 보고 수정 폼을 연다
@@ -281,8 +293,11 @@ pro.post('/app/n/:nid/automation/:sid/steps/from-post', async (req, res) => {
 });
 pro.post('/app/n/:nid/automation/:sid/steps/:pid', async (req, res) => {
   const s = await getSeries(req), b = req.body;
-  if (s) await db.prepare("UPDATE posts SET subject=?, body_md=?, delay_days=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
-    .run(String(b.subject || '').trim(), String(b.body_md || ''), int(b.delay_days, 365), ['free', 'paid'].includes(b.cond) ? b.cond : '', req.params.pid, s.id);
+  const to = (m) => back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}${b.back === 'map' ? '/map' : ''}?step=${encodeURIComponent(req.params.pid)}`, m);
+  const when = b.send_mode === 'date' ? parseLocal(b.send_at, b.tz) : null; // 달력으로 고른 시각(UTC ISO)
+  if (b.send_mode === 'date' && !when) return to('발송 날짜와 시각을 선택하세요.');
+  if (s) await db.prepare("UPDATE posts SET subject=?, body_md=?, delay_days=?, send_at=?, cond=? WHERE id=? AND series_id=? AND kind='step'")
+    .run(String(b.subject || '').trim(), String(b.body_md || ''), int(b.delay_days, 365), when, ['free', 'paid'].includes(b.cond) ? b.cond : '', req.params.pid, s.id);
   back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}${b.back === 'map' ? '/map' : ''}?step=${encodeURIComponent(req.params.pid)}`, '저장했습니다.');
 });
 // 흐름 순서 변경: order=단계 id 를 새 순서대로 쉼표로 나열. 진행 중인 구독자는 "같은 메일"을 가리키도록 위치를 옮겨 준다

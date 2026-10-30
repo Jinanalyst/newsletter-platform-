@@ -29,7 +29,7 @@ const cleanCategory = (nl, v) => (categoriesOf(nl).includes(String(v || '')) ? S
 
 // datetime-local 값('2026-11-01T09:00')을 브라우저의 시간대(tz = getTimezoneOffset 분)로 해석해 UTC ISO로 변환.
 // 서버 시간대와 무관하게 "내가 고른 시각"에 발송되도록 한다.
-function parseLocal(value, tz) {
+export function parseLocal(value, tz) {
   const m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)$/.exec(String(value || ''));
   if (!m) return null;
   const off = Number.isFinite(Number(tz)) ? Number(tz) : 0;
