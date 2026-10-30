@@ -270,7 +270,7 @@ ${courseCards}
 
 <section id="pricing" class="feat"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
 <p class="sub" style="margin-bottom:0">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund" style="text-decoration:underline">${t('환불 정책')}</a></p>
-${PLAN_CSS}${planCards(t, () => `<button class="plbtn off" disabled>${t('준비 중')}</button>`)}${compareTable(t)}</div></section>
+${PLAN_CSS}<style>#pricing .wrap{text-align:center}#pricing .pls,#pricing .cmpw{margin-left:auto;margin-right:auto}#pricing .pl{text-align:left}#pricing .cmp{text-align:center}#pricing .cmp th,#pricing .cmp td{text-align:center}#pricing .cmp th:first-child,#pricing .cmp td:first-child{text-align:left}</style>${planCards(t, () => `<button class="plbtn off" disabled>${t('준비 중')}</button>`)}${compareTable(t)}</div></section>
 
 <div class="band"><div class="wrap"><div class="bandin"><h2>${t('오늘, 첫 번째 이야기를')}<br>${t('시작해 보세요.')}</h2><p>${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}</p>
 <a class="pill white" href="${user ? '/app' : '/signup'}">${user ? t('내 뉴스레터로 이동') : t('무료로 시작하기')} →</a></div></div></div>
