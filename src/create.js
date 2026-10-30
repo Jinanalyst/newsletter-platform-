@@ -31,7 +31,7 @@ const FILE_TYPES = {
 const extOf = (n) => String(n || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1] || '';
 const storedName = (uid) => new RegExp(`^${uid}-[0-9a-f]{24}\\.[a-z0-9]{1,5}$`);
 
-const priceLabel = (c, t = (s) => s) => (c.pricing === 'free' || !c.price ? t('무료') : c.pricing === 'monthly' ? `${won(c.price)} / ${t('월')}` : `${won(c.price)} · ${t('1회 결제')}`);
+export const priceLabel = (c, t = (s) => s) => (c.pricing === 'free' || !c.price ? t('무료') : c.pricing === 'monthly' ? `${won(c.price)} / ${t('월')}` : `${won(c.price)} · ${t('1회 결제')}`);
 
 // ---------- 업로드 ----------
 // 1) 브라우저가 파일 정보를 보내 업로드 주소를 받는다

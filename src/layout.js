@@ -16,15 +16,17 @@ export function readLayout(nl) {
     split: SPLITS.includes(v.split) ? v.split : 'stack',
     order: ids(v.order),
     hidden: ids(v.hidden),
+    courses: ids(v.courses), // 뉴스레터 아래에 보여줄 크리에이트 강의·상품 (선택한 순서)
   };
 }
 
 // 요청 본문 → 저장용 JSON. 이 뉴스레터의 글 id 만 남긴다
-export function cleanLayout(body, validIds) {
-  const ok = new Set(validIds);
+export function cleanLayout(body, validIds, validCourseIds = []) {
+  const ok = new Set(validIds), okCourse = new Set(validCourseIds);
   const l = readLayout({ layout: JSON.stringify(body || {}) });
   l.order = l.order.filter((id) => ok.has(id));
   l.hidden = l.hidden.filter((id) => ok.has(id));
+  l.courses = l.courses.filter((id) => okCourse.has(id)).slice(0, 12);
   return l;
 }
 

@@ -13,6 +13,7 @@ import { tr } from './i18n.js';
 import { NOTE_SELECT } from './feed.js';
 import { snsLinks } from './sns.js';
 import { readLayout, applyOrder } from './layout.js';
+import { priceLabel } from './create.js';
 import { hashPw, checkPw, login, cookie, tooManyTries, limitHits, requireUser, createToken, checkToken, sendVerification, sendReset, cooldown } from './auth.js';
 
 export const pub = Router();
@@ -176,6 +177,9 @@ pub.get('/n/:slug', async (req, res) => {
   const canEdit = isOwner && !fc && !ft; // 필터를 건 상태에서는 일부 글만 보이므로 순서 편집을 막는다
   posts = applyOrder(posts, lay);
   if (!isOwner) posts = posts.filter((p) => !hiddenIds.has(p.id));
+  // 발행자가 고른 강의·상품: 게시된 내 강의만, 선택한 순서대로. 편집 패널에는 내 강의 전체를 보여준다
+  const myCourses = await db.prepare("SELECT id,kind,title,thumbnail,pricing,price,status FROM courses WHERE owner_id=? ORDER BY id DESC").all(nl.owner_id);
+  const pickedCourses = lay.courses.map((id) => myCourses.find((c) => c.id === id)).filter((c) => c && c.status === 'published');
   const cats = nl.categories.split(',').filter(Boolean);
   const filterBar = cats.length || fc || ft
     ? `<div class="chips"><a class="chip${!fc && !ft ? ' on' : ''}" href="/n/${h(nl.slug)}">${t('전체')}</a>${cats.map((x) => `<a class="chip${x === fc ? ' on' : ''}" href="?c=${encodeURIComponent(x)}">${h(x)}</a>`).join('')}${ft ? `<a class="chip on" href="/n/${h(nl.slug)}">#${h(ft)} ✕</a>` : ''}</div>` : '';
@@ -234,6 +238,15 @@ body{background:var(--bg)}
 .lpbar .save{background:#3B82F6;color:#fff;border:0;border-radius:999px;padding:7px 18px;font-size:13px;cursor:pointer}.lpbar .cancel{background:none;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer}
 .lpbar .tip{flex-basis:100%;text-align:center;opacity:.7;font-size:12px}
 .lp-main h2{margin-top:0}
+.lp-courses{margin-top:48px}.lp-courses h2{margin-bottom:14px}
+.lc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.lc{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden;transition:border-color .15s,box-shadow .15s,transform .15s}
+.lc:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 16px 32px -22px var(--blue)}
+.lc .th{aspect-ratio:16/9;background:var(--soft) center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:22px}
+.lc .bd{padding:12px 14px 14px;display:flex;flex-direction:column;gap:2px}.lc b{font-size:15px;line-height:1.4;letter-spacing:-.02em}.lc .pr{font-weight:700;margin-top:4px}
+.lpbar .cpick{flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center}.lpbar .cpick>span{opacity:.7}
+.lpbar .cch{border:1px solid rgba(255,255,255,.35);background:none;color:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lpbar .cch.on{background:#fff;color:#0F172A}.lpbar .cch:disabled{opacity:.4;cursor:not-allowed}.lpbar .cpick a{color:#93C5FD;font-size:12.5px}
 .lp-foot{text-align:center;padding:0 20px 40px}
 </style>`;
   res.page(nl.name, `<div id="lp" class="lp-w-${lay.width} lp-h-${lay.hero} lp-v-${lay.view} lp-s-${lay.split}"><header class="lp-hero"><div class="in"><div class="lp-info">
@@ -250,6 +263,7 @@ ${req.query.ref ? `<p class="note">${t('친구의 추천으로 방문하셨네�
 ${hasPaid(nl) ? `<p class="mute">${t('유료 구독({price})으로 전용 글을 읽을 수 있어요. 무료 구독 후 <a href="{href}">유료 구독</a>에서 신청하세요.', { price: `${nl.price_monthly ? t('월 {p}', { p: won(nl.price_monthly) }) : ''}${nl.price_monthly && nl.price_yearly ? ' / ' : ''}${nl.price_yearly ? t('연 {p}', { p: won(nl.price_yearly) }) : ''}`, href: `/n/${h(nl.slug)}/upgrade` })}</p>` : ''}
 <h2>${t('아카이브')}</h2>${filterBar}${posts.length ? `<div class="lp-list" id="lplist">${posts.map((p) => `<div class="item${hiddenIds.has(p.id) ? ' off" hidden data-off="1' : ''}" data-id="${p.id}"><a href="/n/${h(nl.slug)}/p/${p.id}">${h(personalize(p.subject, null, { html: false }))}</a>${p.audience === 'paid' || p.body_md.includes('[[paywall]]') ? ` <span class="badge">${t('유료')}</span>` : ''}<span class="mute">${fmt(p.sent_at, req.lang)}${p.category ? ` · ${h(p.category)}` : ''}${p.tags ? ' ' + p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ') : ''}</span></div>`).join('')}</div>`
     : `<p class="mute">${t('아직 발행된 글이 없습니다.')}</p>`}
+${pickedCourses.length ? `<section class="lp-courses"><h2>${t('강의·상품')}</h2><div class="lc-grid">${pickedCourses.map((c) => `<a class="lc" href="/c/${c.id}"><div class="th"${c.thumbnail ? ` style="background-image:url('${h(c.thumbnail)}')"` : ''}>${c.thumbnail ? '' : '▶'}</div><div class="bd"><b>${h(c.title)}</b><span class="pr">${priceLabel(c, t)}</span></div></a>`).join('')}</div></section>` : ''}
 </main>
 <footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a> · ${t('{a}로 만든 뉴스레터', { a: '<a href="/">lett.</a>' })}</footer></div>
 ${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id="lpopen">✎ 레이아웃 편집</button>
@@ -258,14 +272,17 @@ ${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id
 <div class="grp"><span>상단 배치</span><div class="seg2"><button type="button" data-k="split" data-v="stack">위아래</button><button type="button" data-k="split" data-v="left">소개 왼쪽</button><button type="button" data-k="split" data-v="right">소개 오른쪽</button></div></div>
 <div class="grp"><span>상단 높이</span><div class="seg2"><button type="button" data-k="hero" data-v="compact">낮게</button><button type="button" data-k="hero" data-v="normal">보통</button><button type="button" data-k="hero" data-v="tall">높게</button></div></div>
 <div class="grp"><span>글 목록</span><div class="seg2"><button type="button" data-k="view" data-v="list">목록</button><button type="button" data-k="view" data-v="grid">카드</button></div></div>
+<div class="cpick" id="lpcourses"><span>강의·상품 표시</span>${myCourses.map((c) => `<button type="button" class="cch" data-c="${c.id}"${c.status === 'published' ? '' : ' disabled title="게시한 뒤에 선택할 수 있어요"'}>${h(c.title || '제목 없음')}${c.status === 'published' ? '' : ' (미게시)'}</button>`).join('')}<a href="/create" target="_blank">${myCourses.length ? '+ 새로 만들기' : '+ 강의·상품 만들기'}</a></div>
 <div class="grp"><button type="button" class="save" id="lpsave">저장</button><button type="button" class="cancel" id="lpcancel">취소</button></div>
-<div class="tip">글을 끌어서 순서를 바꾸고(모바일은 ↑↓), 숨기기로 아카이브에서 뺄 수 있어요. 숨겨도 글 주소로는 계속 열립니다.</div></div></div>
-<script>var LAY=${JSON.stringify({ width: lay.width, hero: lay.hero, view: lay.view, split: lay.split, nid: nl.id })};
-(function(){var root=document.getElementById('lp'),list=document.getElementById('lplist'),panel=document.getElementById('lppanel'),open=document.getElementById('lpopen'),cur={width:LAY.width,hero:LAY.hero,view:LAY.view,split:LAY.split},editing=false,drag=null;
+<div class="tip">강의·상품은 선택한 순서대로 아카이브 아래에 표시돼요. 글을 끌어서 순서를 바꾸고(모바일은 ↑↓), 숨기기로 아카이브에서 뺄 수 있어요. 숨겨도 글 주소로는 계속 열립니다.</div></div></div>
+<script>var LAY=${JSON.stringify({ width: lay.width, hero: lay.hero, view: lay.view, split: lay.split, courses: lay.courses, nid: nl.id })};
+(function(){var root=document.getElementById('lp'),list=document.getElementById('lplist'),panel=document.getElementById('lppanel'),open=document.getElementById('lpopen'),cur={width:LAY.width,hero:LAY.hero,view:LAY.view,split:LAY.split},sel=LAY.courses.slice(),editing=false,drag=null;
 function apply(){root.className='lp-w-'+cur.width+' lp-h-'+cur.hero+' lp-v-'+cur.view+' lp-s-'+cur.split;[].forEach.call(panel.querySelectorAll('[data-k]'),function(b){b.classList.toggle('on',cur[b.dataset.k]===b.dataset.v)})}
+function paintC(){[].forEach.call(document.querySelectorAll('#lpcourses .cch'),function(b){b.classList.toggle('on',sel.indexOf(+b.dataset.c)>=0)})}
+document.getElementById('lpcourses').addEventListener('click',function(e){var b=e.target.closest('.cch');if(!b||b.disabled)return;var id=+b.dataset.c,i=sel.indexOf(id);if(i>=0)sel.splice(i,1);else sel.push(id);paintC()});
 function items(){return list?[].slice.call(list.querySelectorAll('.item')):[]}
 function label(it){var b=it.querySelector('[data-a=eye]');if(b)b.textContent=it.classList.contains('off')?'표시':'숨기기'}
-function start(){editing=true;document.body.classList.add('lp-editing');open.hidden=true;panel.hidden=false;apply();
+function start(){editing=true;paintC();document.body.classList.add('lp-editing');open.hidden=true;panel.hidden=false;apply();
 items().forEach(function(it){it.hidden=false;it.draggable=true;var c=document.createElement('span');c.className='ictl';c.innerHTML='<button type="button" data-a="up">↑</button><button type="button" data-a="dn">↓</button><button type="button" data-a="eye">숨기기</button>';it.insertBefore(c,it.firstChild);label(it)})}
 open.onclick=start;
 document.getElementById('lpcancel').onclick=function(){location.reload()};
@@ -277,7 +294,7 @@ list.addEventListener('dragover',function(e){if(!drag)return;e.preventDefault();
 list.addEventListener('drop',function(e){if(!drag)return;e.preventDefault();var it=e.target.closest('.item');if(it&&it!==drag){var r=it.getBoundingClientRect(),after=root.classList.contains('lp-v-grid')?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;list.insertBefore(drag,after?it.nextElementSibling:it)}});
 list.addEventListener('dragend',function(){drag=null;items().forEach(function(x){x.classList.remove('over','dn')})})}
 document.getElementById('lpsave').onclick=function(){var b=this;b.disabled=true;b.textContent='저장 중…';
-var its=items();fetch('/app/n/'+LAY.nid+'/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({width:cur.width,hero:cur.hero,view:cur.view,split:cur.split,order:its.map(function(i){return +i.dataset.id}),hidden:its.filter(function(i){return i.classList.contains('off')}).map(function(i){return +i.dataset.id})})})
+var its=items();fetch('/app/n/'+LAY.nid+'/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({width:cur.width,hero:cur.hero,view:cur.view,split:cur.split,courses:sel,order:its.map(function(i){return +i.dataset.id}),hidden:its.filter(function(i){return i.classList.contains('off')}).map(function(i){return +i.dataset.id})})})
 .then(function(r){if(!r.ok)throw 0;location.reload()},function(){b.disabled=false;b.textContent='저장';alert('저장하지 못했습니다. 다시 시도해 주세요.')})}})();</script>` : ''}
 <script>
 (function(){var u=${JSON.stringify(pageUrl)},t=${JSON.stringify(nl.name)};

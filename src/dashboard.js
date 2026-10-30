@@ -285,7 +285,8 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
 // 공개 페이지의 레이아웃 편집 모드에서 저장 (소유자만: dash.param 이 소유권을 확인한다)
 dash.post('/app/n/:nid/layout', express.json({ limit: '200kb' }), async (req, res) => {
   const ids = (await db.prepare("SELECT id FROM posts WHERE newsletter_id=? AND kind='post'").all(req.nl.id)).map((p) => p.id);
-  const l = cleanLayout(req.body, ids);
+  const courseIds = (await db.prepare('SELECT id FROM courses WHERE owner_id=?').all(req.user.id)).map((c) => c.id); // 내 강의·상품만 고를 수 있다
+  const l = cleanLayout(req.body, ids, courseIds);
   await db.prepare('UPDATE newsletters SET layout=? WHERE id=?').run(JSON.stringify(l), req.nl.id);
   res.json({ ok: true });
 });
