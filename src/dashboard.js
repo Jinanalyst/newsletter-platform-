@@ -13,6 +13,8 @@ import { snsFields, parseSns } from './sns.js';
 import { parseSubscribers } from './csv.js';
 import { cleanLayout } from './layout.js';
 import { viewStats, postViewStats } from './analytics.js';
+import { findNewsletter, OWNER_ONLY } from './access.js';
+import { settingsTabs } from './workspace.js';
 
 export const dash = Router();
 dash.use('/app', requireUser);
@@ -23,8 +25,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // /app/n/:nid/... 는 소유자만 접근
 dash.param('nid', async (req, res, next, id) => {
-  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+  req.nl = await findNewsletter(id, req.user);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
+  // 팀원은 글·구독자·자동화 등 운영만 가능하고, 설정(도메인·API·팀)·삭제·레이아웃은 소유자 전용
+  if (!req.nl.is_owner && OWNER_ONLY.test(req.originalUrl.split('?')[0])) return res.status(403).page('권한 없음', '<p>소유자만 할 수 있는 작업입니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });
 
@@ -52,7 +56,7 @@ dash.get('/app', async (req, res) => {
   const list = await db.prepare(`SELECT n.*,
     (SELECT COUNT(*) FROM subscribers s WHERE s.newsletter_id=n.id AND s.status='active') AS subs,
     (SELECT COUNT(*) FROM posts p WHERE p.newsletter_id=n.id AND p.status='sent') AS posts
-    FROM newsletters n WHERE owner_id=? ORDER BY id DESC`).all(req.user.id);
+    FROM newsletters n WHERE owner_id=? OR EXISTS (SELECT 1 FROM team_members m WHERE m.newsletter_id=n.id AND m.user_id=? AND m.status='active') ORDER BY id DESC`).all(req.user.id, req.user.id);
   res.page('내 뉴스레터', `<div class="row"><h1 class="grow">내 뉴스레터</h1><a class="btn primary" href="/app/new">+ 새 뉴스레터</a></div>
 ${list.length ? `<div class="grid">${list.map((n) => `<a class="card" href="/app/n/${n.id}">
 <div class="row">${n.logo ? `<img class="logo" style="width:44px;height:44px;border-radius:10px" src="${h(n.logo)}" alt="">` : ''}<b>${h(n.name)}</b></div>
@@ -282,7 +286,7 @@ dash.post('/app/n/:nid/subscribers/:id/delete', async (req, res) => {
 
 // ---------- 설정 ----------
 dash.get('/app/n/:nid/settings', (req, res) =>
-  res.page('설정', `<h1>뉴스레터 설정</h1><p class="mute">공개 주소: /n/${h(req.nl.slug)} (변경 불가)</p>${nlForm(req.nl, false)}
+  res.page('설정', `<h1>뉴스레터 설정</h1><p class="mute">공개 주소: /n/${h(req.nl.slug)} (변경 불가)</p>${settingsTabs(req.nl, '')}${nlForm(req.nl, false)}
 <form method="post" action="/app/n/${req.nl.id}/delete" class="card" onsubmit="return confirm('뉴스레터와 모든 글·구독자가 영구 삭제됩니다. 계속할까요?')">
 <b>뉴스레터 삭제</b><p class="mute">모든 글, 구독자, 통계가 영구 삭제됩니다.</p><button class="danger">삭제</button></form>`,
   { nl: req.nl, active: 'settings', msg: req.query.m }));

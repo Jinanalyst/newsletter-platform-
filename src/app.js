@@ -16,6 +16,7 @@ import { sbRouter, sbEnabled } from './supabase.js';
 import { page } from './views.js';
 import { langMiddleware, langRoute, tr } from './i18n.js';
 import { startScheduler, tick } from './send.js';
+import { workspace, api, domainRouter } from './workspace.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? 1 : 'loopback');
@@ -53,6 +54,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(sbRouter); // SUPABASE_URL 설정 시 가입·로그인·재설정을 Supabase가 처리 (미설정이면 아래 기본 라우트로 통과)
+app.use(domainRouter); // <이름>.lett.live · 인증된 커스텀 도메인 → 해당 뉴스레터 공개 페이지
 app.use(pub);
 app.use(feed); // 커뮤니티 포스트(/posts)
 app.use(legal); // 개인정보처리방침(/privacy) · 환불 정책(/refund)
@@ -61,6 +63,8 @@ app.use(settle); // 통합 정산(/settlement) · 운영자 정산 처리(/admin
 app.use(plans); // 요금제(/pricing) · 결제(PG 연동 지점)
 app.use(billing);
 app.use(ed);   // 글 작성 도구 (블록 에디터·템플릿·가져오기)
+app.use(api); // 공개 API(/api/v1)
+app.use(workspace); // 설정의 도메인·API·팀원, 팀 초대 수락
 app.use(dash);
 app.use(pro);
 

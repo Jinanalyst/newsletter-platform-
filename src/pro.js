@@ -1,4 +1,5 @@
 // 발행자 영역 2단계: 수익 관리 · 자동화 · 성장
+import { findNewsletter } from './access.js';
 import { Router } from 'express';
 import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
 import { requireUser } from './auth.js';
@@ -14,7 +15,7 @@ const jsonForScript = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(
 const int = (v, max = 100_000_000) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
 
 pro.param('nid', async (req, res, next, id) => {
-  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+  req.nl = await findNewsletter(id, req.user);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });

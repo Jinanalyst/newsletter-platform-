@@ -1,4 +1,5 @@
 // 글 작성 도구: 블록 에디터 · 자동 저장 · 버전 기록 · 템플릿 · 미리보기 · 예약 · 분류 · 외부 글 가져오기
+import { findNewsletter } from './access.js';
 import { Router } from 'express';
 import express from 'express';
 import { db, now, cleanTags } from './db.js';
@@ -17,7 +18,7 @@ const back = (res, path, m) => res.redirect(m ? path + (path.includes('?') ? '&'
 const jsonForScript = (o) => JSON.stringify(o).replace(/</g, '\\u003c').replace(new RegExp(String.fromCharCode(0x2028), 'g'), '\\u2028').replace(new RegExp(String.fromCharCode(0x2029), 'g'), '\\u2029');
 
 ed.param('nid', async (req, res, next, id) => {
-  req.nl = await db.prepare('SELECT * FROM newsletters WHERE id=? AND owner_id=?').get(id, req.user.id);
+  req.nl = await findNewsletter(id, req.user);
   if (!req.nl) return res.status(404).page('없음', '<p>뉴스레터를 찾을 수 없습니다. <a href="/app">내 뉴스레터</a></p>');
   next();
 });

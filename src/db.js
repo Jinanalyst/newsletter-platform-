@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 8; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 9; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -177,6 +177,31 @@ ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS accent TEXT NOT NULL DEFAULT ''
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS sns TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS cover_pos TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT '';
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS subdomain TEXT NOT NULL DEFAULT '';
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS custom_domain TEXT NOT NULL DEFAULT '';
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS domain_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS domain_verified_at TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_subdomain ON newsletters(subdomain) WHERE subdomain <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_domain ON newsletters(custom_domain) WHERE custom_domain <> '';
+CREATE TABLE IF NOT EXISTS api_keys (
+  id SERIAL PRIMARY KEY,
+  newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS team_members (
+  id SERIAL PRIMARY KEY,
+  newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  UNIQUE (newsletter_id, email)
+);
 CREATE TABLE IF NOT EXISTS notes (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
