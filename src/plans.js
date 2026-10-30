@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { db, now, baseUrl } from './db.js';
 import { requireUser } from './auth.js';
 import { h } from './render.js';
-import { PLANS, won, planCards, PLAN_CSS } from './plan-data.js';
+import { PLANS, won, planCards, compareTable, PLAN_CSS } from './plan-data.js';
 export { PLANS };
 
 export const plans = Router();
@@ -50,7 +50,7 @@ plans.get('/pricing', (req, res) => {
   res.page(t('요금제'), `${PLAN_CSS}
 <h1>${t('요금제')}</h1><p class="mute">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund">${t('환불 정책')}</a></p>
 ${ready ? '' : `<div class="msg">${t('결제 연동 준비 중입니다. 곧 이용하실 수 있어요.')}</div>`}
-${planCards(t, button)}`, { msg: req.query.m });
+${planCards(t, button)}${compareTable(t)}`, { msg: req.query.m });
 });
 
 // ---------- 결제 시작 ----------
