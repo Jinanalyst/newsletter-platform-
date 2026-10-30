@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import { db, baseUrl, isPaid, hasPaid } from './db.js';
+import { db, baseUrl, isPaid, hasPaid, publicUrl } from './db.js';
 
 export const h = (s = '') =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -77,7 +77,7 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
     ? `<p style="margin:0 0 20px;font-size:14px"><a href="${base}/n/${h(nl.slug)}" style="color:#888;text-decoration:none">← ${h(nl.name)}</a></p><h1 style="margin-top:0">${h(personalize(post.subject, null, { html: false }))}</h1>${chips ? `<p style="font-size:13px;margin:-4px 0 24px">${chips}</p>` : ''}`
     : '';
   const unsub = sub?.token ? `${base}/unsubscribe/${sub.token}` : `${base}/n/${nl.slug}`;
-  const pageUrl = `${base}/n/${nl.slug}/p/${post.id}`;
+  const pageUrl = publicUrl(nl, `/p/${post.id}`);
   const share = `<p style="font-size:14px">공유: <a href="#" onclick="navigator.clipboard.writeText('${pageUrl}');this.textContent='복사됨 ✓';return false">링크 복사</a> ·
 <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(pageUrl)}&text=${encodeURIComponent(post.subject)}" target="_blank" rel="noopener">X</a> ·
 <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}" target="_blank" rel="noopener">Facebook</a></p>`;

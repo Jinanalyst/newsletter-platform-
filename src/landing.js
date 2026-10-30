@@ -1,4 +1,5 @@
 // 메인 랜딩 페이지 — 컨셉: "누구나 자신의 이야기를 세상에 펼칠 수 있는 공간"
+import { publicUrl } from './db.js';
 import { h } from './render.js';
 import { tr, langSwitcher } from './i18n.js';
 import { ago, authorName } from './note-utils.js';
@@ -195,7 +196,7 @@ export function landingPage({ user, list, notes = [], courses = [], lang = 'ko' 
     ? `<a class="pill" href="/app">${t('내 뉴스레터로 이동 →')}</a>`
     : `<a class="pill" href="/signup">${t('지금 시작하기 →')}</a><a class="pill ghost" href="#explore">${t('뉴스레터 탐색하기')}</a>`;
   const explore = list.length
-    ? `<div class="ex">${list.map((n) => `<a class="xc" href="/n/${h(n.slug)}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
+    ? `<div class="ex">${list.map((n) => `<a class="xc" href="${h(publicUrl(n))}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
 <div><b>${h(n.name)}</b><small>${h(n.owner || t('발행자'))} · ${t('구독자 {n}명 · 글 {p}편', { n: n.subs, p: n.posts })}</small></div></div><p>${h(n.description || t('아직 소개가 없습니다.'))}</p></a>`).join('')}</div>`
     : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 열려 있는 뉴스레터가 없어요.')}</b><br>${t('첫 번째 이야기의 주인공이 되어보세요.')}<br><br><a class="pill sm" href="/signup">${t('뉴스레터 만들기')}</a></div>`;
   const courseCards = courses.length

@@ -429,6 +429,10 @@ export const baseUrl = () => {
   return b.replace(/\/+$/, '');
 };
 
+// 공개 페이지의 대표 주소: 인증된 커스텀 도메인 > <이름>.lett.live > 기본 /n/<slug>. 검색·공유·링크에 이 주소를 우선 쓴다
+export const publicHost = (nl) => (nl.custom_domain && nl.domain_verified_at ? nl.custom_domain : nl.subdomain ? `${nl.subdomain}.${(process.env.PLATFORM_DOMAIN || 'lett.live').toLowerCase()}` : '');
+export const publicUrl = (nl, path = '') => { const host = publicHost(nl); return host ? `https://${host}${path}` : `${baseUrl()}/n/${nl.slug}${path}`; };
+
 // 쉼표/#로 구분된 태그 문자열 정리 (중복 제거, 최대 10개·30자)
 export const cleanTags = (s) => [...new Set(String(s || '').split(/[,#\n]/).map((t) => t.trim().slice(0, 30)).filter(Boolean))].slice(0, 10).join(',');
 

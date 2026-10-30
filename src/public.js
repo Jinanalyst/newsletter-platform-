@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
-import { db, now, baseUrl, isPaid, hasPaid } from './db.js';
+import { db, now, baseUrl, isPaid, hasPaid, publicUrl } from './db.js';
 import { enrollSubscriber } from './send.js';
 import { sbEnabled } from './supabase.js';
 import { recordView } from './analytics.js';
@@ -186,7 +186,7 @@ pub.get('/n/:slug', async (req, res) => {
   await recordView(req, nl, 0, 0);
   const accent = /^#[0-9a-f]{6}$/i.test(nl.accent) ? nl.accent : '#3B82F6';
   const abs = (u) => (!u ? '' : /^https?:/i.test(u) ? u : baseUrl() + u);
-  const pageUrl = `${baseUrl()}/n/${nl.slug}`;
+  const pageUrl = publicUrl(nl);
   const ogImg = abs(nl.cover || nl.logo);
   // 대표 색상 그라데이션은 커버 아래에 항상 깔아 둔다: 커버가 없거나 불러오지 못해도 회색 대신 대표 색이 보인다
   const accentBg = `linear-gradient(135deg,${accent},color-mix(in srgb,${accent} 45%,#0F172A))`;
@@ -364,12 +364,11 @@ ${tiers.length ? `<h2>보상</h2><div class="card">${tiers.map(([k, v]) => `<p>$
 pub.get('/n/:slug/rss.xml', async (req, res) => {
   const nl = await getNl(req.params.slug);
   if (!nl) return notFound(res);
-  const base = baseUrl();
   const items = (await db.prepare("SELECT * FROM posts WHERE newsletter_id=? AND kind='post' AND status='sent' ORDER BY sent_at DESC LIMIT 30").all(nl.id))
-    .map((p) => `<item><title>${h(p.subject)}</title><link>${base}/n/${h(nl.slug)}/p/${p.id}</link><guid>${base}/n/${h(nl.slug)}/p/${p.id}</guid>
+    .map((p) => `<item><title>${h(p.subject)}</title><link>${h(publicUrl(nl, '/p/' + p.id))}</link><guid>${h(publicUrl(nl, '/p/' + p.id))}</guid>
 <pubDate>${new Date(p.sent_at).toUTCString()}</pubDate><description>${h(p.preview)}</description>${[p.category, ...p.tags.split(',')].filter(Boolean).map((t) => `<category>${h(t)}</category>`).join('')}</item>`).join('\n');
   res.type('application/rss+xml').send(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${h(nl.name)}</title>
-<link>${base}/n/${h(nl.slug)}</link><description>${h(nl.description)}</description>${items}</channel></rss>`);
+<link>${h(publicUrl(nl))}</link><description>${h(nl.description)}</description>${items}</channel></rss>`);
 });
 
 // ---------- 구독 신청 / 확인 / 해지 ----------

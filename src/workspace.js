@@ -3,7 +3,7 @@ import { Router } from 'express';
 import express from 'express';
 import dns from 'node:dns/promises';
 import { randomBytes, createHash } from 'node:crypto';
-import { db, now, baseUrl } from './db.js';
+import { db, now, baseUrl, publicHost } from './db.js';
 import { requireUser } from './auth.js';
 import { h } from './render.js';
 import { sendMail } from './mail.js';
@@ -23,15 +23,26 @@ const back = (res, path, m) => res.redirect(m ? path + '?m=' + encodeURIComponen
 // ---------- 도메인으로 들어온 요청을 해당 뉴스레터로 연결 ----------
 // <이름>.lett.live 또는 인증이 끝난 커스텀 도메인: / → /n/<slug>, /p/1 → /n/<slug>/p/1
 const HOST_PATHS = /^\/(p\/|rss\.xml$|embed$|subscribe$)/;
+// 기본 주소(/n/<slug>)로 들어온 공개 페이지 요청을 대표 도메인으로 보낸다 (검색 노출을 한 주소로 모으기 위함).
+// 발행자 본인은 레이아웃 편집 등을 위해 그대로 둔다
+const NL_PATH = /^\/n\/([a-z0-9-]+)(\/p\/\d+|\/rss\.xml)?$/;
+async function canonicalRedirect(req, res, next, host) {
+  const m = req.method === 'GET' && NL_PATH.exec(req.path);
+  if (!m) return next();
+  const nl = await db.prepare('SELECT * FROM newsletters WHERE slug=?').get(m[1]);
+  const target = nl && publicHost(nl);
+  if (!target || target === host || req.user?.id === nl.owner_id) return next();
+  res.redirect(301, `https://${target}${m[2] || ''}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`);
+}
 export async function domainRouter(req, res, next) {
   try {
     const host = String(req.hostname || '').toLowerCase();
     const base = PLATFORM_DOMAIN();
-    if (!host || host === base || host === 'www.' + base || host === 'localhost' || /^[\d.:]+$/.test(host)) return next();
+    if (!host || host === base || host === 'www.' + base || host === 'localhost' || /^[\d.:]+$/.test(host)) return canonicalRedirect(req, res, next, host);
     const nl = host.endsWith('.' + base)
       ? await db.prepare('SELECT slug FROM newsletters WHERE subdomain=?').get(host.slice(0, -base.length - 1))
       : await db.prepare('SELECT slug FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL').get(host);
-    if (!nl) return next();
+    if (!nl) return canonicalRedirect(req, res, next, host);
     const [path, query] = req.url.split('?');
     if (path === '/' || HOST_PATHS.test(path)) req.url = `/n/${nl.slug}${path === '/' ? '' : path}${query ? '?' + query : ''}`;
     next();
