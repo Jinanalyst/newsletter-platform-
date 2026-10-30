@@ -182,7 +182,7 @@ export function page(title, body, { user = null, nl = null, active = '', wide = 
   let nav;
   if (nl) {
     nav = `<nav><a href="/app">←</a><a href="/app/n/${nl.id}" class="brand"><b>${h(nl.name)}</b></a>
-${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['automation', '자동화'], ['growth', '성장'], ['revenue', '수익'], ['settings', '설정']]
+${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['automation', '자동화'], ['growth', '성장'], ['traffic', '유입'], ['revenue', '수익'], ['settings', '설정']]
   .map(([p, l]) => `<a href="/app/n/${nl.id}${p ? '/' + p : ''}" class="${active === p ? 'on' : ''}">${l}</a>`).join('')}
 <span class="sp"></span><a href="${h(publicUrl(nl))}" target="_blank" rel="noopener">공개 페이지 ↗</a>${logout}</nav>`;
   } else if (user) {

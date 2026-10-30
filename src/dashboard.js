@@ -12,7 +12,7 @@ import { page, fmt, pct } from './views.js';
 import { snsFields, parseSns } from './sns.js';
 import { parseSubscribers } from './csv.js';
 import { cleanLayout } from './layout.js';
-import { viewStats, postViewStats } from './analytics.js';
+import { viewStats, postViewStats, trafficStats } from './analytics.js';
 import { findNewsletter, OWNER_ONLY } from './access.js';
 import { settingsTabs } from './workspace.js';
 
@@ -193,6 +193,30 @@ ${recent.join('') || '<tr><td colspan="5" class="mute">아직 글이 없습니�
 
 // 글 목록·에디터·템플릿·가져오기는 editor.js 에서 처리
 const getPost = async (req) => await db.prepare('SELECT * FROM posts WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
+
+// 유입 분석: 방문자가 어떤 경로(검색·SNS·블로그·메일·직접)로 왔는지
+const CH_COLOR = { '검색': '#3B82F6', 'SNS': '#EC4899', '블로그·커뮤니티': '#10B981', '메일': '#F59E0B', '직접': '#64748B', '기타 웹사이트': '#8B5CF6' };
+dash.get('/app/n/:nid/traffic', async (req, res) => {
+  const nl = req.nl, days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+  const [ts, vs] = await Promise.all([trafficStats(nl.id, days), viewStats(nl.id, days)]);
+  const p = (n) => (ts.total ? Math.round((n / ts.total) * 1000) / 10 : 0);
+  const vmax = Math.max(1, ...vs.daily.map((d) => d[1]));
+  const bar = (n, color) => `<div style="height:8px;border-radius:4px;background:#EEF2F6;min-width:120px"><div style="height:8px;border-radius:4px;background:${color};width:${p(n)}%"></div></div>`;
+  res.page('유입 분석', `<div class="row"><h1 class="grow">유입 분석</h1>${[7, 30, 90].map((d) => `<a class="btn sm${d === days ? ' primary' : ''}" href="?days=${d}">${d}일</a>`).join('')}</div>
+<p class="mute">최근 ${days}일 동안 공개 페이지·글을 연 방문이 어떤 경로로 들어왔는지 보여줘요.</p>
+<div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자</div>
+${[...ts.channels].sort((a, b) => b.n - a.n).filter((c) => c.n).slice(0, 2).map((c) => `<div class="stat"><b>${p(c.n)}%</b>${c.name}</div>`).join('')}</div>
+<h2>일별 방문</h2><div class="card"><div class="bars">${vs.daily.map(([d, n]) => `<i title="${d}: ${n}회" style="height:${Math.max(3, (n / vmax) * 100)}%"></i>`).join('')}</div></div>
+<h2>유입 채널</h2><div class="card">${ts.total ? `<table>${ts.channels.map((c) => `<tr><td style="white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CH_COLOR[c.name]};margin-right:8px"></span>${c.name}</td><td style="width:50%">${bar(c.n, CH_COLOR[c.name])}</td><td style="text-align:right;white-space:nowrap">${c.n}회 <span class="mute">${p(c.n)}%</span></td></tr>`).join('')}</table>` : '<p class="mute" style="margin:0">아직 조회 기록이 없습니다.</p>'}</div>
+<div class="row" style="align-items:flex-start">
+<div class="grow card" style="margin:0"><b>유입 경로 순위</b><table>${ts.sources.map((s, i) => `<tr><td class="mute">${i + 1}</td><td>${h(s.name)} <span class="mute">${s.channel}</span></td><td style="text-align:right;white-space:nowrap">${s.n}회 <span class="mute">${p(s.n)}%</span></td></tr>`).join('') || '<tr><td class="mute">기록이 없습니다.</td></tr>'}</table></div>
+<div class="grow card" style="margin:0"><b>검색 키워드</b><table>${ts.keywords.map((k) => `<tr><td>${h(k.keyword)}</td><td style="text-align:right">${k.n}회</td></tr>`).join('') || '<tr><td class="mute">키워드가 있는 검색 유입이 아직 없어요.</td></tr>'}</table>
+<p class="mute" style="margin:8px 0 0">구글 등 일부 검색엔진은 키워드를 알려주지 않아요.</p></div></div>
+<h2>유입 주소 상위</h2><div class="card"><table>${ts.urls.map((u) => `<tr><td style="word-break:break-all"><a href="https://${h(u.ref_url)}" target="_blank" rel="noopener noreferrer">${h(u.ref_url)}</a></td><td style="text-align:right;white-space:nowrap">${u.n}회</td></tr>`).join('') || '<tr><td class="mute">다른 사이트에서 링크로 들어온 기록이 아직 없어요.</td></tr>'}</table></div>
+<div class="card"><b>인스타그램·카카오톡 등 앱 링크</b><p class="mute" style="margin:6px 0 0">앱에서 연 링크는 출처가 안 남는 경우가 많아요. 공유할 링크 뒤에 <code>?utm_source=instagram</code> 처럼 붙이면 해당 채널로 집계됩니다. (instagram, kakao, facebook, twitter, youtube, threads, newsletter)</p></div>
+<p class="mute">검색 로봇·미리보기 봇과 발행자 본인의 조회는 제외하고, 같은 사람이 30분 안에 다시 열어도 한 번만 세요.</p>`,
+  { nl, active: 'traffic', wide: true });
+});
 
 dash.get('/app/n/:nid/posts/:id/stats', async (req, res) => {
   const nl = req.nl, p = await getPost(req);

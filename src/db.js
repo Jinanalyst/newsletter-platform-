@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 9; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 10; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -177,6 +177,8 @@ ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS accent TEXT NOT NULL DEFAULT ''
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS sns TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS cover_pos TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT '';
+ALTER TABLE page_views ADD COLUMN IF NOT EXISTS ref_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE page_views ADD COLUMN IF NOT EXISTS keyword TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS subdomain TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS custom_domain TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS domain_token TEXT NOT NULL DEFAULT '';
