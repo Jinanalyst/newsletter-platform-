@@ -165,7 +165,7 @@ dash.get('/app/n/:nid', async (req, res) => {
     ['환영 메일 켜기', (await db.prepare('SELECT COUNT(*) n FROM series WHERE newsletter_id=? AND active=1').get(nl.id)).n > 0, `/app/n/${nl.id}/automation`],
     ['첫 글 발행', (await db.prepare("SELECT COUNT(*) n FROM posts WHERE newsletter_id=? AND kind='post' AND status='sent'").get(nl.id)).n > 0,
       firstDraft ? `/app/n/${nl.id}/posts/${firstDraft.id}` : `/app/n/${nl.id}/posts`],
-    ['구독 링크 공유해 첫 구독자 받기', await c('active') > 0, `/app/n/${nl.id}/growth`],
+    ['구독 링크 공유해 첫 구독자 받기', await c('active') > 0, `/n/${nl.slug}`],
   ];
   const todo = steps.filter((s) => !s[1]).length;
   const checklist = todo ? `<h2>시작하기 · ${steps.length - todo}/${steps.length}</h2><div class="card"><ul class="check">${steps.map(([label, done, href]) =>

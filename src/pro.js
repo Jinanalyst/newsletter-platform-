@@ -1,4 +1,4 @@
-// 발행자 영역 2단계: 수익 관리 · 자동화 · 성장
+// 발행자 영역 2단계: 수익 관리 · 자동화
 import { findNewsletter } from './access.js';
 import { Router } from 'express';
 import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
@@ -195,31 +195,4 @@ pro.post('/app/n/:nid/automation/:sid/delete', async (req, res) => {
     await db.prepare('DELETE FROM series WHERE id=?').run(s.id);
   }
   back(res, `/app/n/${req.nl.id}/automation`, '삭제했습니다.');
-});
-
-// ================= 성장 =================
-pro.get('/app/n/:nid/growth', async (req, res) => {
-  const nl = req.nl, base = baseUrl();
-  const top = await db.prepare(`SELECT r.email, COUNT(*) n FROM subscribers s JOIN subscribers r ON r.id=s.referred_by
-    WHERE s.newsletter_id=? AND s.status='active' GROUP BY r.id ORDER BY n DESC LIMIT 10`).all(nl.id);
-  const total = (await db.prepare("SELECT COUNT(*) n FROM subscribers WHERE newsletter_id=? AND referred_by IS NOT NULL AND status='active'").get(nl.id)).n;
-  const snippet = `<iframe src="${base}/n/${nl.slug}/embed" width="100%" height="190" style="border:0"></iframe>`;
-  res.page('성장', `<h1>성장</h1>
-<div class="stats"><div class="stat"><b>${total}</b>추천으로 가입한 구독자</div></div>
-<h2>구독 폼 임베드</h2><div class="card"><p class="mute">블로그·웹사이트에 아래 코드를 붙여넣으세요.</p>
-<textarea rows="3" readonly onclick="this.select()">${h(snippet)}</textarea>
-<p style="margin:12px 0 0"><a class="btn" style="padding:4px 14px;font-size:13px" href="/n/${h(nl.slug)}/embed" target="_blank" rel="noopener">미리보기 ↗</a></p></div>
-<h2>공유 링크</h2><div class="card"><p class="mute">구독 페이지: <input readonly value="${h(base)}/n/${h(nl.slug)}" onclick="this.select()"></p>
-<p class="mute">각 글의 공개 페이지(/n/${h(nl.slug)}/p/글번호)에는 링크 복사·X·Facebook 공유 버튼과 미리보기(OG) 정보가 들어 있습니다.</p></div>
-<h2>추천인 프로그램</h2><p class="mute">모든 메일 하단에 "친구에게 추천하기" 링크가 들어가고, 구독자마다 고유 추천 링크가 생깁니다. 추천받은 사람이 구독을 확정하면 집계됩니다.</p>
-<form class="card" method="post" action="/app/n/${nl.id}/growth/rewards"><label>보상 단계 (한 줄에 하나: 추천 수:보상 이름)</label>
-<textarea rows="4" name="rewards" placeholder="3:스티커 팩&#10;10:1:1 커피챗">${h(nl.rewards)}</textarea>
-<p class="mute">보상 지급은 발행자가 직접 합니다. 구독자는 자신의 추천 현황 페이지에서 달성 여부를 볼 수 있습니다.</p><p><button class="primary">저장</button></p></form>
-<h2>추천 순위</h2><div class="card"><table><tr><th>구독자</th><th>추천 수</th></tr>${top.map((t) => `<tr><td>${h(t.email)}</td><td>${t.n}</td></tr>`).join('')
-    || '<tr><td colspan="2" class="mute">아직 없습니다.</td></tr>'}</table></div>`, { nl, active: 'growth', wide: true, msg: req.query.m });
-});
-pro.post('/app/n/:nid/growth/rewards', async (req, res) => {
-  const lines = String(req.body.rewards || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /^\d{1,4}:.+/.test(l)).slice(0, 10);
-  await db.prepare('UPDATE newsletters SET rewards=? WHERE id=?').run(lines.join('\n').slice(0, 1000), req.nl.id);
-  back(res, `/app/n/${req.nl.id}/growth`, '저장했습니다.');
 });
