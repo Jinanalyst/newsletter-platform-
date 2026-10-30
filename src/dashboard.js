@@ -87,8 +87,29 @@ if(box){var m=/(\\d+)% (\\d+)%/.exec(pos.value)||[0,50,50];setPos(+m[1],+m[2]);v
 function at(e){var r=box.getBoundingClientRect();setPos((e.clientX-r.left)/r.width*100,(e.clientY-r.top)/r.height*100)}
 box.addEventListener('pointerdown',function(e){drag=true;box.setPointerCapture(e.pointerId);at(e)});box.addEventListener('pointermove',function(e){if(drag)at(e)});box.addEventListener('pointerup',function(){drag=false})}</script>`;
 
-dash.get('/app/new', (req, res) =>
-  res.page('새 뉴스레터', `<h1>뉴스레터 개설</h1>${nlForm()}`, { active: 'app', msg: req.query.m }));
+// 개설 마법사: 질문 하나씩 묻고 답하는 화면 (public/newnl.js). 마지막에 아래 POST /app/new 로 한 번에 보낸다
+dash.get('/app/new/check', async (req, res) => {
+  const slug = String(req.query.slug || '').toLowerCase();
+  res.json({ ok: /^[a-z0-9][a-z0-9-]{2,29}$/.test(slug) && !(await db.prepare('SELECT 1 FROM newsletters WHERE slug=?').get(slug)) });
+});
+dash.get('/app/new', (req, res) => res.page('새 뉴스레터', `<style>
+.wz{max-width:560px;margin:0 auto}.wzbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 28px}.wzbar i{display:block;height:100%;width:0;background:var(--blue);transition:width .35s}
+.wrow{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.wq{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}.wq b{font-size:26px;line-height:1.35;letter-spacing:-.03em}.wq .mute{font-size:14.5px}.wstep{margin:0 0 8px;font-size:13px}
+.wa{align-self:flex-end;max-width:85%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:18px 4px 18px 18px;padding:9px 16px;font-size:14.5px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wa:hover{opacity:.85}.wa.skip{background:var(--soft);color:var(--mute)}
+#wzcur{animation:wzin .25s ease-out}@keyframes wzin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.wbody{margin:14px 0 6px;padding-left:4px}.wbody textarea{font-family:inherit;font-size:15px}.wbody input[type=text],.wbody input:not([type]),.wbody textarea{font-size:16px;padding:12px 16px}
+.wslug{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:0 14px}.wslug:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 18%,transparent)}.wslug input{border:0;box-shadow:none!important;padding:12px 0;flex:1}.wslug span{white-space:nowrap}
+.wst{margin:8px 2px 0;min-height:1.4em}.wst.good{color:#16A34A}.wst.bad{color:var(--bad)}
+.wnav{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;padding-left:4px}.wnav .ghost{border-color:transparent;color:var(--mute)}
+.werr{color:var(--bad);margin:10px 4px 0;font-size:14px}.werr[hidden]{display:none}
+.wsum{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:6px 18px;margin-bottom:12px}.wsum>div{display:flex;gap:14px;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:14.5px}.wsum>div:last-child{border:0}.wsum b{text-align:right;word-break:break-all}
+.wbody .chips{margin-bottom:10px}.wbody .dropzone .logo{display:block;margin:0 auto 10px}.wbody .dropzone .logo[hidden]{display:none}
+</style>
+<div class="wz"><p class="mute" style="margin:0"><a href="/app">← 내 뉴스레터</a></p><h1 style="margin-top:10px">새 뉴스레터 만들기</h1>
+<div class="wzbar"><i id="wzp"></i></div><div id="wzchat"></div><div id="wzcur"></div>
+<form id="wzform" method="post" action="/app/new" hidden></form><template id="snsTpl">${snsFields()}</template></div>
+<script src="/static/newnl.js?v=1"></script>`, { active: 'app', msg: req.query.m }));
 dash.post('/app/new', async (req, res) => {
   const b = req.body;
   const slug = String(b.slug || '').toLowerCase();
