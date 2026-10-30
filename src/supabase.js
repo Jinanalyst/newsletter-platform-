@@ -45,6 +45,8 @@ async function upsertLocal(sb) {
   const name = String(sb.user_metadata?.name || sb.user_metadata?.full_name || '').slice(0, 60);
   let u = await db.prepare('SELECT * FROM users WHERE supabase_id=?').get(sb.id);
   let isNew = false;
+  // Supabase 에서 이메일이 확인된 계정인데 로컬에 미인증으로 남아 있으면(나중에 인증 처리한 경우) 로그인할 때 맞춰 준다
+  if (u && !u.verified) { await db.prepare('UPDATE users SET verified=1 WHERE id=?').run(u.id); u.verified = 1; }
   if (!u) {
     u = await db.prepare('SELECT * FROM users WHERE email=?').get(email);
     if (u) {
