@@ -60,6 +60,12 @@ pro.post('/app/n/:nid/revenue/pricing', async (req, res) => {
 
 // ================= 자동화 =================
 const COND = { '': '모든 구독자', free: '무료 구독자만', paid: '유료 구독자만' };
+const POST_STATUS = { draft: '초안', scheduled: '예약', sent: '발행됨' };
+// "글" 탭에 있는 글(초안·예약·발행 모두) — 자동화 메일로 불러올 수 있다
+const listPosts = (nlId) => db.prepare("SELECT id, subject, status, sent_at, created_at FROM posts WHERE newsletter_id=? AND kind='post' AND subject<>'' ORDER BY id DESC LIMIT 100").all(nlId);
+const postPicker = (nl, s, posts, back) => `<form method="post" action="/app/n/${nl.id}/automation/${s.id}/steps/from-post"><input type="hidden" name="back" value="${back}">
+<p class="mute" style="margin:0 0 10px">"글" 탭의 글을 고르면 제목과 본문이 이 흐름의 새 메일로 복사돼요. (원본 글은 그대로 두고, 복사된 메일만 따로 고칠 수 있어요.)</p>
+<div style="max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:12px">${posts.map((x) => `<button name="post_id" value="${x.id}" type="submit" style="display:flex;width:100%;gap:10px;align-items:center;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:12px 14px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h(x.subject)}</span><span class="badge ${x.status}">${POST_STATUS[x.status] || x.status}</span><span class="mute" style="font-size:12px">${(x.sent_at || x.created_at || '').slice(0, 10)}</span></button>`).join('') || '<p class="mute" style="padding:14px;margin:0">"글" 탭에 제목이 있는 글이 아직 없어요.</p>'}</div></form>`;
 
 pro.get('/app/n/:nid/automation', async (req, res) => {
   const nl = req.nl;
@@ -88,6 +94,7 @@ pro.get('/app/n/:nid/automation/:sid', async (req, res) => {
   const nl = req.nl, s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${nl.id}/automation`);
   const steps = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
+  const posts = await listPosts(nl.id);
   res.page(s.name, `<div class="row"><h1 class="grow">${h(s.name)}</h1>
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}" class="row"><input name="name" value="${h(s.name)}" style="width:200px">
 <label style="margin:0"><input type="checkbox" name="active" value="1" style="width:auto" ${s.active ? 'checked' : ''}> 켜기</label><button class="sm">저장</button></form><a class="btn sm" href="/app/n/${nl.id}/automation/${s.id}/map">맵으로 보기</a></div>
@@ -116,7 +123,8 @@ ${steps.map((p, i) => `<div class="fc"><i></i><span>${i ? `직전 메일 발송 
 <div class="fn" draggable="false" data-id="${p.id}"><span class="hd" title="끌어서 순서 변경">⋮⋮</span><span class="no">${i + 1}</span>
 <span class="tx"><b>${h(p.subject || '(제목 없음)')}</b><small${p.subject && p.body_md ? '' : ' class="warn"'}>${p.subject && p.body_md ? COND[p.cond] || COND[''] : '제목·본문이 비어 있으면 발송되지 않아요'}</small></span>
 <span class="mv"><button type="button" class="up" aria-label="위로">▲</button><button type="button" class="dn" aria-label="아래로">▼</button></span></div>`).join('')}
-<form class="fadd" method="post" action="/app/n/${nl.id}/automation/${s.id}/steps"><button>+ 메일 추가</button></form></div>
+<form class="fadd" method="post" action="/app/n/${nl.id}/automation/${s.id}/steps"><button>+ 메일 추가</button></form>
+<details class="fadd" style="max-width:420px"><summary class="btn" style="display:inline-block;cursor:pointer">글에서 불러오기</summary><div style="margin-top:10px">${postPicker(nl, s, posts, '')}</div></details></div>
 <div class="fpanel"><form class="card" id="fform" method="post" style="margin:0" hidden>
 <div class="row"><b id="ftitle"></b><span class="grow"></span><a id="fstat" href="#">통계</a></div>
 <div class="row" style="margin-top:10px"><span class="mute">일수</span><input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px">
@@ -153,6 +161,7 @@ pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
   const nl = req.nl, s = await getSeries(req);
   if (!s) return res.redirect(`/app/n/${nl.id}/automation`);
   const steps = await db.prepare("SELECT id, subject, body_md, delay_days, cond FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos, id").all(s.id);
+  const posts = await listPosts(nl.id);
   const data = steps.map((p) => ({ id: p.id, subject: p.subject, body_md: p.body_md, delay: p.delay_days, cond: p.cond, condText: COND[p.cond] || COND[''] }));
   res.page(s.name + ' 맵', `<div class="row"><h1 class="grow">${h(s.name)}</h1>
 <form method="post" action="/app/n/${nl.id}/automation/${s.id}" class="row"><input type="hidden" name="back" value="map"><input name="name" value="${h(s.name)}" style="width:200px">
@@ -181,7 +190,9 @@ pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
 .mmodal .x{border:0;background:none;font-size:22px;line-height:1;padding:2px 8px;cursor:pointer;color:var(--mute)}
 </style>
 <div class="mcv" id="mcv"><svg id="msv" width="100" height="100"></svg></div>
-<form method="post" action="/app/n/${nl.id}/automation/${s.id}/steps" style="margin-top:12px"><input type="hidden" name="back" value="map"><button>+ 메일 추가</button></form>
+<div class="row" style="margin-top:12px"><form method="post" action="/app/n/${nl.id}/automation/${s.id}/steps" style="margin:0"><input type="hidden" name="back" value="map"><button>+ 메일 추가</button></form>
+<button type="button" id="pickopen">글에서 불러오기</button></div>
+<div class="mmodal" id="pickmodal" hidden><div class="card"><div class="row"><b style="font-size:18px">글에서 불러오기</b><span class="grow"></span><button type="button" class="x" id="pickclose" aria-label="닫기">✕</button></div>${postPicker(nl, s, posts, 'map')}</div></div>
 <div class="mmodal" id="fmodal" hidden><form class="card" id="fform" method="post"><input type="hidden" name="back" value="map">
 <div class="row"><b id="ftitle" style="font-size:18px"></b><span class="grow"></span><a id="fstat" href="#">통계</a><button type="button" class="x" id="fclose" aria-label="닫기">✕</button></div>
 <div class="row" style="margin-top:10px"><span class="mute">일수</span><input type="number" name="delay_days" id="fdelay" min="0" max="365" style="width:80px">
@@ -212,7 +223,8 @@ svg.setAttribute('width',mx);svg.setAttribute('height',my);
 for(var i=0;i<S.length;i++){var from=i?S[i-1].id:'start',a=anchor(from,'out'),b=anchor(S[i].id,'in'),p=document.createElementNS(NS,'path');p.setAttribute('d',curve(a,b));svg.insertBefore(p,svg.firstChild);
 var l=document.createElement('span');l.className='elb';l.style.left=(a[0]+b[0])/2+'px';l.style.top=(a[1]+b[1])/2+'px';l.textContent=i?'직전 발송 후 '+S[i].delay+'일':S[i].delay?'구독 후 '+S[i].delay+'일':'구독 즉시';cv.appendChild(l);labels.push(l)}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(pos))}catch(e){}}
-function closeModal(){modal.hidden=true}
+function closeModal(){modal.hidden=true;$('pickmodal').hidden=true}
+$('pickopen').addEventListener('click',function(){$('pickmodal').hidden=false});$('pickclose').addEventListener('click',closeModal);$('pickmodal').addEventListener('pointerdown',function(e){if(e.target===$('pickmodal'))closeModal()});
 // 카드를 선택해 강조하고, open 이 true 면 수정 팝업을 연다
 function sel(id,open){var d=S[idx(id)];Object.keys(els).forEach(function(k){els[k].classList.toggle('sel',String(k)===String(id))});
 if(!d||!open){return}
@@ -255,6 +267,17 @@ pro.post('/app/n/:nid/automation/:sid/steps', async (req, res) => {
   const id = Number((await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
     .run(req.nl.id, s.id, pos, pos === 1 ? 0 : 3, '', '', now())).lastInsertRowid);
   back(res, `/app/n/${req.nl.id}/automation/${s.id}${req.body.back === 'map' ? '/map' : ''}?step=${id}${req.body.back === 'map' ? '&open=1' : ''}`, '메일을 추가했습니다. 제목과 본문을 채워주세요.');
+});
+pro.post('/app/n/:nid/automation/:sid/steps/from-post', async (req, res) => {
+  const s = await getSeries(req);
+  if (!s) return res.redirect(`/app/n/${req.nl.id}/automation`);
+  const src = await db.prepare("SELECT subject, body_md FROM posts WHERE id=? AND newsletter_id=? AND kind='post'").get(req.body.post_id, req.nl.id);
+  const mapPage = req.body.back === 'map' ? '/map' : '';
+  if (!src) return back(res, `/app/n/${req.nl.id}/automation/${s.id}${mapPage}`, '글을 찾을 수 없습니다.');
+  const pos = ((await db.prepare("SELECT MAX(step_pos) m FROM posts WHERE series_id=? AND kind='step'").get(s.id)).m || 0) + 1;
+  const id = Number((await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at) VALUES(?,'step','auto',?,?,?,?,?,?)")
+    .run(req.nl.id, s.id, pos, pos === 1 ? 0 : 3, src.subject, src.body_md, now())).lastInsertRowid);
+  back(res, `/app/n/${req.nl.id}/automation/${s.id}${mapPage}?step=${id}${mapPage ? '&open=1' : ''}`, '글을 메일로 불러왔습니다. 발송 시점을 확인해 주세요.');
 });
 pro.post('/app/n/:nid/automation/:sid/steps/:pid', async (req, res) => {
   const s = await getSeries(req), b = req.body;
