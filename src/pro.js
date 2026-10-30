@@ -186,9 +186,13 @@ pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
 .mtools .tl:hover{background:var(--soft)}.mtools .tl.on{background:var(--blue-soft);color:var(--blue);border-color:var(--blue);font-weight:600}
 .mtools .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
 .mtools #thint{font-size:13px;color:var(--mute);margin-left:auto;padding-right:6px}
-.mcv{position:relative;height:max(660px,calc(100vh - 290px));margin-top:10px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--soft);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px}
+.mcv{position:relative;height:max(660px,calc(100vh - 290px));margin-top:10px;overflow:hidden;touch-action:none;user-select:none;border:1px solid var(--line);border-radius:16px;background:var(--soft);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px}
 .mcv[data-tool=hand]{cursor:grab}.mcv[data-tool=hand].pan{cursor:grabbing}.mcv[data-tool=mail],.mcv[data-tool=pause]{cursor:copy}
 .mcv[data-tool=delete] .nd:not(.st){cursor:pointer}.mcv[data-tool=delete] .nd:not(.st):hover{border-color:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 20%,transparent)}
+.mw{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
+.mzoom{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 6px;box-shadow:0 8px 24px -12px rgba(15,23,42,.4);z-index:5}
+.mzoom button{border:0;background:none;border-radius:999px;min-width:34px;height:32px;padding:0 10px;font-size:15px;cursor:pointer;color:inherit}.mzoom button:hover{background:var(--soft)}
+.mzoom #zpct{min-width:58px;font-size:13px}.mzoom .zs{width:1px;height:18px;background:var(--line);margin:0 4px}
 .mcv svg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .mcv path{fill:none;stroke:var(--blue);stroke-width:3}.mcv path.tmp{stroke-dasharray:6 5;opacity:.7}
 .nd{position:absolute;width:290px;border:1px solid var(--line);background:var(--card);border-radius:18px;padding:18px 20px;box-shadow:0 6px 18px -14px #0F172A;user-select:none;cursor:grab;touch-action:none}
@@ -213,7 +217,8 @@ pro.get('/app/n/:nid/automation/:sid/map', async (req, res) => {
 <button type="button" class="tl on" data-tool="cursor" title="커서 (V)">🖱 커서</button><button type="button" class="tl" data-tool="hand" title="화면 이동 (H)">✋ 이동</button><span class="sep"></span>
 <button type="button" class="tl" data-tool="mail" title="메일 추가 (M)">✉ 메일</button><button type="button" class="tl" data-tool="pause" title="일시정지 추가 (P)">⏸ 일시정지</button><button type="button" class="tl" id="pickopen" title="글 탭의 글을 메일로 불러오기">📥 글 불러오기</button><span class="sep"></span>
 <button type="button" class="tl" data-tool="delete" title="단계 삭제 (X)">🗑 삭제</button><span id="thint"></span></div>
-<div class="mcv" id="mcv" data-tool="cursor"><svg id="msv" width="100" height="100"></svg></div>
+<div class="mcv" id="mcv" data-tool="cursor"><div class="mw" id="mw"><svg id="msv" width="100" height="100"></svg></div>
+<div class="mzoom"><button type="button" id="zout" title="축소 (-)">−</button><button type="button" id="zpct" title="클릭하면 100%">100%</button><button type="button" id="zin" title="확대 (+)">＋</button><span class="zs"></span><button type="button" id="zfit" title="전체 보기 (0)">맞춤</button></div></div>
 <div class="mmodal" id="pickmodal" hidden><div class="card"><div class="row"><b style="font-size:18px">글에서 불러오기</b><span class="grow"></span><button type="button" class="x" id="pickclose" aria-label="닫기">✕</button></div>${postPicker(nl, s, posts, 'map')}</div></div>
 <div class="mmodal" id="fmodal" hidden><form class="card" id="fform" method="post"><input type="hidden" name="back" value="map">
 <div class="row"><b id="ftitle" style="font-size:18px"></b><span class="grow"></span><a id="fstat" href="#">통계</a><button type="button" class="x" id="fclose" aria-label="닫기">✕</button></div>
@@ -229,7 +234,7 @@ ${sendFields()}
 <input type="datetime-local" name="send_at" id="wat" style="width:auto" hidden></div>
 <div class="row" style="margin-top:14px"><button class="primary sm">저장</button><button type="submit" class="sm danger" id="wdel" onclick="return confirm('이 일시정지를 삭제할까요?')">삭제</button></div></form></div>
 <script>(function(){var S=${jsonForScript(data)},B='/app/n/${nl.id}/automation/${s.id}',KEY='fmap:${s.id}',W=290,H=118,SW=140,SH=60,WW=230,WH=96;
-var cv=document.getElementById('mcv'),svg=document.getElementById('msv'),NS='http://www.w3.org/2000/svg',pos={},els={},labels=[],f=document.getElementById('fform'),modal=document.getElementById('fmodal'),wmodal=document.getElementById('wmodal'),tool='cursor';
+var cv=document.getElementById('mcv'),svg=document.getElementById('msv'),NS='http://www.w3.org/2000/svg',pos={},els={},labels=[],f=document.getElementById('fform'),modal=document.getElementById('fmodal'),wmodal=document.getElementById('wmodal'),tool='cursor',world=document.getElementById('mw'),V={x:0,y:0,z:1};
 function $(i){return document.getElementById(i)}
 ${SEND_JS}
 $('wtz').value=new Date().getTimezoneOffset();
@@ -237,7 +242,7 @@ try{pos=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){pos={}}
 function dflt(k,i){return k==='start'?[40,300]:[250+i*400,(i%2?190:330)]}
 function idx(k){return S.findIndex(function(d){return String(d.id)===String(k)})}
 function P(k){return pos[k]||dflt(k,k==='start'?-1:idx(k))}
-function mk(cls,k){var n=document.createElement('div');n.className='nd '+cls;n.dataset.k=k;els[k]=n;cv.appendChild(n);var p=P(k);n.style.left=p[0]+'px';n.style.top=p[1]+'px';return n}
+function mk(cls,k){var n=document.createElement('div');n.className='nd '+cls;n.dataset.k=k;els[k]=n;world.appendChild(n);var p=P(k);n.style.left=p[0]+'px';n.style.top=p[1]+'px';return n}
 function port(n,c,k){var s=document.createElement('span');s.className='pt '+c;if(k!=null)s.dataset.k=k;n.appendChild(s)}
 function fmtAt(iso){return new Date(iso).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function waitTxt(d){return d.sendAt?fmtAt(d.sendAt)+'까지':d.waitHours%24===0?(d.waitHours/24)+'일 동안':d.waitHours+'시간 동안'}
@@ -258,7 +263,7 @@ var keys=['start'].concat(S.map(function(d){return d.id})),mx=900,my=520;
 keys.forEach(function(k){var p=P(k),s=size(k);mx=Math.max(mx,p[0]+s[0]+80);my=Math.max(my,p[1]+(els[k]?els[k].offsetHeight:s[1])+80)});
 svg.setAttribute('width',mx);svg.setAttribute('height',my);
 for(var i=0;i<S.length;i++){var from=i?S[i-1].id:'start',a=anchor(from,'out'),b=anchor(S[i].id,'in'),p=document.createElementNS(NS,'path');p.setAttribute('d',curve(a,b));svg.insertBefore(p,svg.firstChild);
-var t=lbl(i);if(!t)continue;var l=document.createElement('span');l.className='elb';l.style.left=(a[0]+b[0])/2+'px';l.style.top=(a[1]+b[1])/2+'px';l.textContent=t;cv.appendChild(l);labels.push(l)}}
+var t=lbl(i);if(!t)continue;var l=document.createElement('span');l.className='elb';l.style.left=(a[0]+b[0])/2+'px';l.style.top=(a[1]+b[1])/2+'px';l.textContent=t;world.appendChild(l);labels.push(l)}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(pos))}catch(e){}}
 function closeModal(){modal.hidden=true;wmodal.hidden=true;$('pickmodal').hidden=true}
 $('pickopen').addEventListener('click',function(){$('pickmodal').hidden=false});$('pickclose').addEventListener('click',closeModal);$('pickmodal').addEventListener('pointerdown',function(e){if(e.target===$('pickmodal'))closeModal()});
@@ -275,11 +280,12 @@ $('fdelay').value=d.delay;fillSend(d.sendAt);$('fcond').value=d.cond||'';$('fsub
 $('fclose').addEventListener('click',closeModal);$('wclose').addEventListener('click',closeModal);
 modal.addEventListener('pointerdown',function(e){if(e.target===modal)closeModal()});wmodal.addEventListener('pointerdown',function(e){if(e.target===wmodal)closeModal()});
 // 도구 모음
-var HINT={cursor:'카드를 클릭해 수정 · 끌어서 옮기기 · 오른쪽 점을 끌어 순서 잇기',hand:'빈 곳을 끌어 화면을 움직여요',mail:'빈 곳을 클릭하면 메일 카드가 추가돼요 (흐름 맨 끝)',pause:'빈 곳을 클릭하면 일시정지 카드가 추가돼요 (기간 동안 다음 메일이 멈춤)',delete:'지울 카드를 클릭하세요'};
+var HINT={cursor:'카드 클릭=수정 · 끌어서 옮기기 · 점을 끌어 순서 잇기 · 휠=확대/축소 · 빈 곳 끌어 이동',hand:'빈 곳을 끌어 화면을 움직여요',mail:'빈 곳을 클릭하면 메일 카드가 추가돼요 (흐름 맨 끝)',pause:'빈 곳을 클릭하면 일시정지 카드가 추가돼요 (기간 동안 다음 메일이 멈춤)',delete:'지울 카드를 클릭하세요'};
 function setTool(t){tool=t;cv.dataset.tool=t;[].slice.call(document.querySelectorAll('#mtools .tl[data-tool]')).forEach(function(b){b.classList.toggle('on',b.dataset.tool===t)});$('thint').textContent=HINT[t]}
 [].slice.call(document.querySelectorAll('#mtools .tl[data-tool]')).forEach(function(b){b.addEventListener('click',function(){setTool(b.dataset.tool)})});setTool('cursor');
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();setTool('cursor');return}
 if(e.metaKey||e.ctrlKey||e.altKey||/INPUT|TEXTAREA|SELECT/.test((e.target&&e.target.tagName)||'')||!modal.hidden||!wmodal.hidden||!$('pickmodal').hidden)return;
+if(e.key==='+'||e.key==='='){zoomBy(1.2);return}if(e.key==='-'){zoomBy(1/1.2);return}if(e.key==='0'){fitView();return}
 var m={v:'cursor',h:'hand',m:'mail',p:'pause',x:'delete'}[e.key.toLowerCase()];if(m)setTool(m)});
 function post(path,body){return fetch(B+path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})}
 function del(k){var d=S[idx(k)];if(!d||!confirm(d.type==='wait'?'이 일시정지를 삭제할까요?':'이 메일을 삭제할까요?'))return;delete pos[k];save();post('/steps/'+k+'/delete','back=map').then(function(){location.href=B+'/map'}).catch(function(){location.reload()})}
@@ -288,14 +294,15 @@ function drag(n,k,onClick){n.addEventListener('pointerdown',function(e){if(e.tar
 if(tool==='delete'){e.preventDefault();e.stopPropagation();if(k!=='start')del(k);return}
 if(tool!=='cursor')return;
 e.preventDefault();var p=P(k),sx=e.clientX,sy=e.clientY,ox=p[0],oy=p[1],moved=false;n.setPointerCapture(e.pointerId);
-function mv(ev){var dx=ev.clientX-sx,dy=ev.clientY-sy;if(!moved&&Math.abs(dx)+Math.abs(dy)<5)return;moved=true;var x=Math.max(0,ox+dx),y=Math.max(0,oy+dy);pos[k]=[x,y];n.style.left=x+'px';n.style.top=y+'px';draw()}
+function mv(ev){var dx=(ev.clientX-sx)/V.z,dy=(ev.clientY-sy)/V.z;if(!moved&&Math.abs(dx)+Math.abs(dy)<5)return;moved=true;var x=Math.max(0,ox+dx),y=Math.max(0,oy+dy);pos[k]=[x,y];n.style.left=x+'px';n.style.top=y+'px';draw()}
 function up(){n.removeEventListener('pointermove',mv);n.removeEventListener('pointerup',up);if(moved)save();else if(onClick)onClick()}n.addEventListener('pointermove',mv);n.addEventListener('pointerup',up)})}
 drag(st,'start');S.forEach(function(d){drag(els[d.id],d.id,function(){sel(d.id,true)})});
-function at(ev){var r=cv.getBoundingClientRect();return [ev.clientX-r.left+cv.scrollLeft,ev.clientY-r.top+cv.scrollTop]}
+function at(ev){var r=cv.getBoundingClientRect();return [(ev.clientX-r.left-V.x)/V.z,(ev.clientY-r.top-V.y)/V.z]}
 // 빈 곳 클릭: 이동 도구는 화면 끌기, 메일·일시정지 도구는 그 자리에 새 카드 추가
-cv.addEventListener('pointerdown',function(e){if(e.target.closest('.pt'))return;if(tool!=='hand'&&(e.target.closest('.nd')||e.target.closest('.elb')))return;
-if(tool==='hand'){e.preventDefault();var sx=e.clientX,sy=e.clientY,l0=cv.scrollLeft,t0=cv.scrollTop;cv.classList.add('pan');cv.setPointerCapture(e.pointerId);
-function mv(ev){cv.scrollLeft=l0-(ev.clientX-sx);cv.scrollTop=t0-(ev.clientY-sy)}function up(){cv.classList.remove('pan');cv.removeEventListener('pointermove',mv);cv.removeEventListener('pointerup',up)}cv.addEventListener('pointermove',mv);cv.addEventListener('pointerup',up);return}
+cv.addEventListener('pointerdown',function(e){if(e.target.closest('.pt')||e.target.closest('.mzoom'))return;var onCard=e.target.closest('.nd')||e.target.closest('.elb');
+if(tool==='hand'||(tool==='cursor'&&!onCard)){e.preventDefault();var sx=e.clientX,sy=e.clientY,x0=V.x,y0=V.y;cv.classList.add('pan');cv.setPointerCapture(e.pointerId);
+function mv(ev){V.x=x0+ev.clientX-sx;V.y=y0+ev.clientY-sy;applyView()}function up(){cv.classList.remove('pan');cv.removeEventListener('pointermove',mv);cv.removeEventListener('pointerup',up)}cv.addEventListener('pointermove',mv);cv.addEventListener('pointerup',up);return}
+if(onCard)return;
 if(tool==='mail'||tool==='pause'){e.preventDefault();var c=at(e),wait=tool==='pause';
 post('/steps','json=1&back=map&type='+(wait?'wait':'mail')).then(function(r){return r.json()}).then(function(j){if(!j.id)throw 0;pos[j.id]=[Math.max(0,c[0]-(wait?WW:W)/2),Math.max(0,c[1]-(wait?WH:H)/2)];save();location.href=B+'/map?step='+j.id+'&open=1'}).catch(function(){location.reload()})}});
 // 오른쪽 점을 다른 단계로 끌어 놓으면 "이 단계 다음에 저 단계"로 순서를 바꾼다
@@ -309,8 +316,17 @@ if(ids.join()===S.map(function(d){return String(d.id)}).join())return;
 var cur=(location.search.match(/step=(\d+)/)||[])[1];
 post('/reorder','order='+ids.join(',')).then(function(){location.href=B+'/map'+(cur?'?step='+cur:'')}).catch(function(){location.reload()})}
 pt.addEventListener('pointermove',mv);pt.addEventListener('pointerup',up);pt.addEventListener('pointercancel',function(){t.remove();if(over)over.classList.remove('over')});mv(e)});
-$('mreset').addEventListener('click',function(){pos={};try{localStorage.removeItem(KEY)}catch(e){}location.reload()});
-draw();requestAnimationFrame(draw);
+// 확대·축소: 마우스 휠(커서 위치 기준) · 하단 바 · 단축키 + - 0
+function applyView(){world.style.transform='translate('+V.x+'px,'+V.y+'px) scale('+V.z+')';$('zpct').textContent=Math.round(V.z*100)+'%';try{localStorage.setItem(KEY+':v',JSON.stringify(V))}catch(e){}}
+function zoomAt(px,py,nz){nz=Math.min(2,Math.max(0.3,nz));var k=nz/V.z;V.x=px-(px-V.x)*k;V.y=py-(py-V.y)*k;V.z=nz;applyView()}
+function zoomBy(k){zoomAt(cv.clientWidth/2,cv.clientHeight/2,V.z*k)}
+function fitView(){var keys=['start'].concat(S.map(function(d){return d.id})),x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;keys.forEach(function(k){var q=P(k),el=els[k];x0=Math.min(x0,q[0]);y0=Math.min(y0,q[1]);x1=Math.max(x1,q[0]+el.offsetWidth);y1=Math.max(y1,q[1]+el.offsetHeight)});
+var pad=70,w=cv.clientWidth,h=cv.clientHeight,z=Math.min(1,Math.max(0.3,Math.min((w-pad*2)/(x1-x0),(h-pad*2)/(y1-y0))));V.z=z;V.x=(w-(x1-x0)*z)/2-x0*z;V.y=(h-(y1-y0)*z)/2-y0*z;applyView()}
+function initView(){var v=null;try{v=JSON.parse(localStorage.getItem(KEY+':v')||'null')}catch(e){}if(v&&isFinite(v.x)&&isFinite(v.y)&&v.z>=0.3&&v.z<=2){V=v;applyView()}else fitView()}
+cv.addEventListener('wheel',function(e){e.preventDefault();var r=cv.getBoundingClientRect();zoomAt(e.clientX-r.left,e.clientY-r.top,V.z*Math.exp(-e.deltaY*(e.ctrlKey?0.01:0.0016)))},{passive:false});
+$('zin').addEventListener('click',function(){zoomBy(1.2)});$('zout').addEventListener('click',function(){zoomBy(1/1.2)});$('zfit').addEventListener('click',fitView);$('zpct').addEventListener('click',function(){zoomAt(cv.clientWidth/2,cv.clientHeight/2,1)});
+$('mreset').addEventListener('click',function(){pos={};try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+':v')}catch(e){}location.reload()});
+draw();requestAnimationFrame(function(){draw();initView()});
 var q=new URLSearchParams(location.search).get('step');if(S.some(function(x){return String(x.id)===q}))sel(q,/[?&]open=1/.test(location.search))})();</script>
 <p><a href="/app/n/${nl.id}/automation">← 자동화 목록</a></p>`, { nl, active: 'automation', wide: true, msg: req.query.m });
 });
