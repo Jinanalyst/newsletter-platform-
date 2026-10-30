@@ -3,7 +3,7 @@ import { h } from './render.js';
 import { tr, langSwitcher } from './i18n.js';
 import { ago, authorName } from './note-utils.js';
 import { bizInfo } from './business.js';
-import { planCards, PLAN_CSS } from './plan-data.js';
+import { planCards, PLAN_CSS, won } from './plan-data.js';
 
 // 브랜드: 네이비 #0F172A · 블루 #3B82F6 · 배경 #F8FAFC · 그레이 #94A3B8
 export const FAVICON = `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#0F172A"/><rect x="11" y="7" width="6.5" height="21" rx="3.2" fill="#fff"/><circle cx="26" cy="27" r="5" fill="#3B82F6"/></svg>')}">`;
@@ -189,7 +189,7 @@ const ICON = {
 const mountain = (c1, c2, c3) => `<svg viewBox="0 0 300 190" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g${c1.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
 <rect width="300" height="190" fill="url(#g${c1.slice(1)})"/><path d="M0 120 90 62l56 46 52-34 102 62v54H0z" fill="${c3}" opacity=".45"/><path d="M0 146 70 100l62 40 70-52 98 70v32H0z" fill="${c3}" opacity=".7"/><rect y="132" width="300" height="60" fill="#fff" opacity=".28"/></svg>`;
 
-export function landingPage({ user, list, notes = [], lang = 'ko' }) {
+export function landingPage({ user, list, notes = [], courses = [], lang = 'ko' }) {
   const t = tr(lang);
   const cta = user
     ? `<a class="pill" href="/app">${t('내 뉴스레터로 이동 →')}</a>`
@@ -198,6 +198,10 @@ export function landingPage({ user, list, notes = [], lang = 'ko' }) {
     ? `<div class="ex">${list.map((n) => `<a class="xc" href="/n/${h(n.slug)}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
 <div><b>${h(n.name)}</b><small>${h(n.owner || t('발행자'))} · ${t('구독자 {n}명 · 글 {p}편', { n: n.subs, p: n.posts })}</small></div></div><p>${h(n.description || t('아직 소개가 없습니다.'))}</p></a>`).join('')}</div>`
     : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 열려 있는 뉴스레터가 없어요.')}</b><br>${t('첫 번째 이야기의 주인공이 되어보세요.')}<br><br><a class="pill sm" href="/signup">${t('뉴스레터 만들기')}</a></div>`;
+  const courseCards = courses.length
+    ? `<div class="cg">${courses.map((c) => `<a class="cc" href="/c/${c.id}"><div class="ct"${c.thumbnail ? ` style="background-image:url('${h(c.thumbnail)}')"` : ''}>${c.thumbnail ? '' : '<span>▶</span>'}<em>${t(c.kind === 'product' ? '디지털 상품' : '강의')}</em></div>
+<div class="cb"><b>${h(c.title)}</b><small>${h(c.author || t('크리에이터'))}</small><div class="cp">${c.pricing === 'free' || !c.price ? t('무료') : c.pricing === 'monthly' ? `${won(c.price)}<i> / ${t('월')}</i>` : won(c.price)}</div></div></a>`).join('')}</div>`
+    : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 올라온 강의가 없어요.')}</b><br>${t('첫 번째 크리에이터가 되어보세요.')}</div>`;
   const noteCards = notes.length
     ? `<div class="nts">${notes.map((n) => `<a class="nc" href="/posts/${n.id}"><span class="nca" style="background:hsl(${(n.user_id * 47) % 360} 55% 46%)">${h([...authorName(n)][0] || '?')}</span><div><div class="nm"><b>${h(authorName(n))}</b><small>${ago(n.created_at, t)}</small></div><p>${h(n.body.slice(0, 180))}</p><div class="ct">♥ ${n.likes} · ${t('댓글')} ${n.comments}</div></div></a>`).join('')}</div>`
     : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 포스트가 없어요. 첫 글을 남겨 보세요.')}</b></div>`;
@@ -209,7 +213,7 @@ export function landingPage({ user, list, notes = [], lang = 'ko' }) {
 <meta property="og:title" content="${h(t('lett. — 당신의 이야기가 시작되는 곳'))}"><meta property="og:description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.'))}">
 <meta name="theme-color" content="#F8FAFC">${FAVICON}<style>${CSS}</style></head><body>
 <header id="hd"><div class="wrap nav"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a>
-<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="/posts">${t('포스트')}</a><a href="#explore">${t('탐색')}</a></nav><span class="sp"></span>
+<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="/posts">${t('포스트')}</a><a href="#courses">${t('강의')}</a><a href="#explore">${t('탐색')}</a></nav><span class="sp"></span>
 ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pill sm" href="/app">${t('내 뉴스레터')}</a>` : `<a class="login" href="/login">${t('로그인')}</a><a class="pill sm" href="/signup">${t('시작하기')}</a>`}</div></header>
 
 <main>
@@ -250,10 +254,21 @@ ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pi
 <p class="sub">${t('짧은 생각을 남기고, 좋아요와 댓글로 이야기를 나눠 보세요.')}</p>${noteCards}
 <div class="cta sec-cta"><a class="pill" href="/posts">${t('포스트 전체 보기 →')}</a></div></div></section>
 
-<section id="explore" class="feat"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
+<section id="courses" class="feat"><div class="wrap"><div class="kicker">CREATE</div><h2>${t('지금 인기 있는 강의와 상품.')}</h2>
+<p class="sub">${t('크리에이터가 직접 만든 강의와 디지털 상품을 만나 보세요.')}</p><style>.cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
+.cc{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:18px;background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s,transform .15s}
+.cc:hover{border-color:var(--blue);transform:translateY(-3px);box-shadow:0 20px 40px -26px var(--blue)}
+.ct{position:relative;aspect-ratio:16/9;background:#EEF2F8 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#94A3B8;font-size:26px}
+.ct em{position:absolute;left:12px;top:12px;font-style:normal;font-size:12px;font-weight:600;background:rgba(15,23,42,.78);color:#fff;border-radius:999px;padding:3px 10px}
+.cb{padding:16px 18px 18px;display:flex;flex-direction:column;gap:3px}.cb b{font-size:16.5px;line-height:1.4;letter-spacing:-.02em;color:var(--navy)}
+.cb small{color:#64748B;font-size:13.5px}.cp{margin-top:8px;font-weight:800;font-size:18px;letter-spacing:-.03em;color:var(--navy)}.cp i{font-style:normal;font-weight:500;color:#64748B;font-size:14px}</style>
+${courseCards}
+<div class="cta sec-cta"><a class="pill" href="/create">${t('내 강의 만들기 →')}</a></div></div></section>
+
+<section id="explore"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
 <p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p>${explore}</div></section>
 
-<section id="pricing"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
+<section id="pricing" class="feat"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
 <p class="sub" style="margin-bottom:0">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund" style="text-decoration:underline">${t('환불 정책')}</a></p>
 ${PLAN_CSS}${planCards(t, () => `<button class="plbtn off" disabled>${t('준비 중')}</button>`)}</div></section>
 
@@ -267,8 +282,8 @@ ${user ? `<a href="/app">${t('내 뉴스레터')}</a>` : `<a href="/login">${t('
 <script>const hd=document.getElementById('hd');const f=()=>hd.classList.toggle('scrolled',scrollY>8);addEventListener('scroll',f,{passive:true});f();
 (function(){var rm=matchMedia('(prefers-reduced-motion:reduce)').matches;
 // 스크롤 등장: 같은 묶음 안에서는 순서대로 조금씩 늦게
-document.querySelectorAll('.steps,.fg,.ex').forEach(function(g){[].forEach.call(g.children,function(c,i){c.style.setProperty('--d',i*.08+'s')})});
-var els=document.querySelectorAll('.kicker,section h2,.sub,.step,.f,.xc,.empty,.bandin');
+document.querySelectorAll('.steps,.fg,.ex,.cg').forEach(function(g){[].forEach.call(g.children,function(c,i){c.style.setProperty('--d',i*.08+'s')})});
+var els=document.querySelectorAll('.kicker,section h2,.sub,.step,.f,.xc,.cc,.empty,.bandin');
 if(!rm&&'IntersectionObserver' in window){document.documentElement.classList.add('js');
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;var el=e.target;el.classList.add('in');io.unobserve(el);setTimeout(function(){el.classList.remove('rv','in');el.style.removeProperty('--d')},1400)})},{threshold:.15,rootMargin:'0px 0px -40px 0px'});
 els.forEach(function(el){el.classList.add('rv');io.observe(el)})}

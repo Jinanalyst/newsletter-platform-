@@ -28,7 +28,10 @@ pub.get('/', async (req, res) => {
       (SELECT COUNT(*) FROM posts p WHERE p.newsletter_id=n.id AND p.status='sent') AS posts
     FROM newsletters n JOIN users u ON u.id=n.owner_id WHERE u.verified=1 ORDER BY n.id DESC LIMIT 30`).all();
   const notes = await db.prepare(`SELECT * FROM (${NOTE_SELECT}) x ORDER BY id DESC LIMIT 4`).all(0);
-  res.send(landingPage({ user: req.user, list, notes, lang: req.lang }));
+  // 인기 강의·상품: 아직 판매 집계가 없어 최근 게시순으로 보여준다 (결제 연동 후 판매량순으로 교체)
+  const courses = await db.prepare(`SELECT c.id,c.kind,c.title,c.thumbnail,c.pricing,c.price,u.name AS author FROM courses c JOIN users u ON u.id=c.owner_id
+    WHERE c.status='published' ORDER BY c.id DESC LIMIT 6`).all();
+  res.send(landingPage({ user: req.user, list, notes, courses, lang: req.lang }));
 });
 
 // ---------- 회원: 이메일 가입 / 로그인 / 소셜 ----------
