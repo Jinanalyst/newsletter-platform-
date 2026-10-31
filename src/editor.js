@@ -66,6 +66,19 @@ async function applyContent(p, nl, b) {
   return { c, t };
 }
 
+// 글 삭제: 발송된 글도 지울 수 있다(발송 중인 글만 제외). FK 없는 통계 행도 함께 정리
+async function deletePosts(nlId, ids) {
+  let n = 0;
+  for (const id of ids) {
+    const p = await db.prepare("SELECT id FROM posts WHERE id=? AND newsletter_id=? AND kind='post' AND status<>'sending'").get(id, nlId);
+    if (!p) continue;
+    await db.prepare('DELETE FROM clicks WHERE post_id=?').run(id);
+    await db.prepare('DELETE FROM page_views WHERE post_id=?').run(id);
+    n += Number((await db.prepare('DELETE FROM posts WHERE id=?').run(id)).changes);
+  }
+  return n;
+}
+
 // ================= 글 목록 · 새 글 =================
 ed.get('/app/n/:nid/posts', async (req, res) => {
   const nl = req.nl;
@@ -80,21 +93,22 @@ ed.get('/app/n/:nid/posts', async (req, res) => {
 <button class="primary">+ 새 글</button></form></div>
 ${cats.length || c || tag ? `<p class="mute">분류: <a href="/app/n/${nl.id}/posts">전체</a>${cats.map((x) => ` · <a href="?c=${encodeURIComponent(x)}"${x === c ? ' style="font-weight:600"' : ''}>${h(x)}</a>`).join('')}${tag ? ` · #${h(tag)} <a href="/app/n/${nl.id}/posts">✕</a>` : ''}</p>` : ''}
 <form method="post" action="/app/n/${nl.id}/posts/bulk-delete" id="bulk" onsubmit="return bulkSubmit(this)">
-<div class="row" style="margin:6px 0"><button class="sm danger" id="bulkBtn" disabled>선택 삭제</button><span class="mute" id="bulkCnt"></span><span class="mute grow" style="text-align:right">발송된 글은 삭제할 수 없습니다.</span></div>
+<div class="row" style="margin:6px 0"><button class="sm danger" id="bulkBtn" disabled>선택 삭제</button><span class="mute" id="bulkCnt"></span><span class="mute grow" style="text-align:right">발송된 글을 삭제하면 공개 페이지와 통계도 함께 사라집니다.</span></div>
 <div class="card"><table><tr><th style="width:28px"><input type="checkbox" id="bulkAll" aria-label="전체 선택"></th><th>제목</th><th>분류</th><th>상태</th><th>일시</th><th></th></tr>${rows.map((p) => {
-    const editable = ['draft', 'scheduled'].includes(p.status);
+    const editable = ['draft', 'scheduled', 'sent'].includes(p.status);
     return `<tr>
-<td>${editable ? `<input type="checkbox" name="ids" value="${p.id}" class="bulkChk" aria-label="선택">` : ''}</td>
+<td>${p.status !== 'sending' ? `<input type="checkbox" name="ids" value="${p.id}" class="bulkChk" data-sent="${p.status === 'sent' ? 1 : 0}" aria-label="선택">` : ''}</td>
 <td><a href="/app/n/${nl.id}/posts/${p.id}">${h(p.subject || '(제목 없음)')}</a></td>
 <td class="mute">${h(p.category)}${p.tags ? ` ${p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ')}` : ''}</td>
 <td><span class="badge ${p.status}">${p.status}</span></td>
-<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td>${editable ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}">수정</a> ` : ''}<a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a></td></tr>`;
+<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td style="white-space:nowrap">${editable ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}">수정</a> ` : ''}${p.status === 'sent' ? `<a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a> ` : ''}${p.status !== 'sending' ? `<button type="submit" form="del${p.id}" class="btn sm danger" onclick="return confirm('${p.status === 'sent' ? '발송된 글입니다. 삭제하면 공개 페이지와 통계가 사라지며 되돌릴 수 없습니다. 삭제할까요?' : '삭제할까요?'}')">삭제</button>` : ''}</td></tr>`;
   }).join('')
     || '<tr><td colspan="6" class="mute">아직 없습니다.</td></tr>'}</table></div></form>
 <script>(function(){var all=document.getElementById('bulkAll'),btn=document.getElementById('bulkBtn'),cnt=document.getElementById('bulkCnt'),cs=[].slice.call(document.querySelectorAll('.bulkChk'));
 function upd(){var n=cs.filter(function(c){return c.checked}).length;btn.disabled=!n;cnt.textContent=n?n+'개 선택':'';all.checked=!!cs.length&&n===cs.length;all.indeterminate=n>0&&n<cs.length}
 all.addEventListener('change',function(){cs.forEach(function(c){c.checked=all.checked});upd()});cs.forEach(function(c){c.addEventListener('change',upd)});
-window.bulkSubmit=function(){var n=cs.filter(function(c){return c.checked}).length;return n>0&&confirm(n+'개의 글을 삭제할까요? 되돌릴 수 없습니다.')};upd()})();</script>
+window.bulkSubmit=function(){var n=cs.filter(function(c){return c.checked}).length;var s=cs.filter(function(c){return c.checked&&c.dataset.sent==='1'}).length;return n>0&&confirm(n+'개의 글을 삭제할까요?'+(s?' 발송된 글 '+s+'개는 공개 페이지와 통계도 사라집니다.':'')+' 되돌릴 수 없습니다.')};upd()})();</script>
+${rows.filter((p) => p.status !== 'sending').map((p) => `<form id="del${p.id}" method="post" action="/app/n/${nl.id}/posts/${p.id}/delete"></form>`).join('')}
 <p class="mute"><a href="/app/n/${nl.id}/templates">템플릿 관리</a></p>`, { nl, active: 'posts', wide: true, msg: req.query.m });
 });
 
@@ -105,11 +119,10 @@ ed.post('/app/n/:nid/posts/new', async (req, res) => {
   res.redirect(`/app/n/${req.nl.id}/posts/${id}`);
 });
 
-// 선택한 글 일괄 삭제 (초안·예약 글만)
+// 선택한 글 일괄 삭제
 ed.post('/app/n/:nid/posts/bulk-delete', async (req, res) => {
   const ids = [].concat(req.body.ids || []).map(Number).filter(Number.isInteger);
-  let n = 0;
-  for (const id of ids) n += Number((await db.prepare("DELETE FROM posts WHERE id=? AND newsletter_id=? AND kind='post' AND status IN ('draft','scheduled')").run(id, req.nl.id)).changes);
+  const n = await deletePosts(req.nl.id, ids);
   back(res, `/app/n/${req.nl.id}/posts`, n ? `${n}개의 글을 삭제했습니다.` : '삭제할 글이 없습니다.');
 });
 
@@ -117,14 +130,18 @@ ed.post('/app/n/:nid/posts/bulk-delete', async (req, res) => {
 ed.get('/app/n/:nid/posts/:id', async (req, res) => {
   const nl = req.nl, p = await getPost(req);
   if (!p) return res.redirect(`/app/n/${nl.id}/posts`);
-  if (p.status === 'sent' || p.status === 'sending') return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
+  if (p.status === 'sending') return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
+  const sent = p.status === 'sent';
+  const sentCard = `<div class="card"><div class="row"><div><label>공개 대상</label><select name="audience"><option value="all" ${p.audience === 'all' ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만</option><option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option></select></div><input type="hidden" name="scheduled_at" id="sched"><span id="tzname" hidden></span></div>
+<p class="mute">이미 발송된 글입니다. 여기서 고친 내용은 <b>공개 페이지에만</b> 반영되고, 이미 받은 메일은 바뀌지 않습니다.</p>
+<div class="row"><button class="primary" name="action" value="update">수정 내용 저장</button><a class="btn" href="/app/n/${nl.id}/posts/${p.id}/stats">통계 보기</a><a class="btn" href="/n/${h(nl.slug)}/p/${p.id}" target="_blank" rel="noopener">공개 페이지 열기</a></div></div>`;
   const n = (await recipientsFor(p)).length;
   const cats = categoriesOf(nl);
   const verCount = (await db.prepare('SELECT COUNT(*) n FROM post_versions WHERE post_id=?').get(p.id)).n;
   const tpls = await db.prepare('SELECT id,name,subject,preview,body_md FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
   const cfg = { nid: nl.id, id: p.id, status: p.status, rev: p.updated_at || '', body_md: p.body_md, scheduled_at: p.scheduled_at || '',
     templates: tpls, sample: { name: req.user.name || '', email: req.user.email }, from: nl.name };
-  res.page('글 쓰기', `<div class="row"><h1 class="grow">글 쓰기 <span class="badge ${p.status}">${p.status}</span></h1>
+  res.page(sent ? '글 수정' : '글 쓰기', `<div class="row"><h1 class="grow">${sent ? '글 수정' : '글 쓰기'} <span class="badge ${p.status}">${p.status}</span></h1>
 <span class="mute" id="savestate">${p.status === 'scheduled' ? '예약됨 — 수정하면 예약이 해제됩니다' : ''}</span>
 <button type="button" class="sm" id="pvopen">미리보기</button></div>
 <form method="post" id="f"><input type="hidden" name="tz" id="tz"><input type="hidden" name="body_md" id="body">
@@ -147,7 +164,7 @@ ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설�
 <div class="seg" id="pvdev"><button type="button" class="on" data-d="d">데스크톱</button><button type="button" data-d="m">모바일</button></div>
 <button type="button" class="sm grow-end" id="pvclose">닫기 ✕</button></div>
 <div id="inbox" class="inbox" hidden></div><div class="pvwrap" id="pvwrap"><iframe id="pv" sandbox=""></iframe></div></div></div></div>
-<div class="card"><div class="row"><div><label>발송 대상</label><select name="audience">
+${sent ? sentCard : `<div class="card"><div class="row"><div><label>발송 대상</label><select name="audience">
 <option value="all" ${p.audience === 'all' ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만 (유료 전용 글)</option>
 <option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option></select></div>
 <div><label>예약 시각 <span id="tzname"></span></label><input type="datetime-local" name="scheduled_at" id="sched"></div>
@@ -155,7 +172,7 @@ ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설�
 <p class="mute">지금 발송하면 확정된 구독자 <b>${n}명</b>에게 전송됩니다. 유료 구간은 본문에 <code>[[paywall]]</code> 블록(“/유료”)을 넣으세요.</p>
 <div class="row"><button name="action" value="save">임시 저장</button><button name="action" value="test">테스트 발송 (내 메일로)</button>
 <button name="action" value="schedule">${p.status === 'scheduled' ? '예약 변경' : '예약 발송'}</button>${p.status === 'scheduled' ? '<button name="action" value="cancel">예약 취소</button>' : ''}
-<button class="primary" name="action" value="send" onclick="return confirm('${n}명에게 지금 발송합니다. 계속할까요?')">지금 발송</button></div></div></form>
+<button class="primary" name="action" value="send" onclick="return confirm('${n}명에게 지금 발송합니다. 계속할까요?')">지금 발송</button></div></div>`}</form>
 <div class="row"><a class="btn" href="/app/n/${nl.id}/posts/${p.id}/versions">버전 기록${verCount ? ` (${verCount})` : ''}</a>
 <form method="post" action="/app/n/${nl.id}/posts/${p.id}/delete" onsubmit="return confirm('삭제할까요?')"><button class="danger sm">이 글 삭제</button></form></div>
 <script type="application/json" id="cfg">${jsonForScript(cfg)}</script><script src="/static/editor.js"></script>`,
@@ -186,11 +203,12 @@ ed.post('/app/n/:nid/posts/:id/autosave', express.json({ limit: '2mb' }), async 
 // ================= 저장 · 테스트 · 예약 · 발송 =================
 ed.post('/app/n/:nid/posts/:id', async (req, res) => {
   const nl = req.nl, p = await getPost(req);
-  if (!p || !['draft', 'scheduled'].includes(p.status)) return res.redirect(`/app/n/${nl.id}/posts`);
+  if (!p || !['draft', 'scheduled', 'sent'].includes(p.status)) return res.redirect(`/app/n/${nl.id}/posts`);
   const b = req.body;
   const go = (m) => back(res, `/app/n/${nl.id}/posts/${p.id}`, m);
   const { c } = await applyContent(p, nl, b);
   await snapshot(p.id, c, 'manual', true);
+  if (p.status === 'sent') return go('수정 내용을 저장했습니다. 공개 페이지에 반영됩니다.'); // 발송된 글: 내용만 갱신, 재발송·예약 없음
   const when = parseLocal(b.scheduled_at, b.tz);
   await db.prepare('UPDATE posts SET scheduled_at=? WHERE id=?').run(when, p.id);
   const fresh = await getPost(req);
@@ -219,7 +237,7 @@ ed.post('/app/n/:nid/posts/:id', async (req, res) => {
 });
 
 ed.post('/app/n/:nid/posts/:id/delete', async (req, res) => {
-  await db.prepare("DELETE FROM posts WHERE id=? AND newsletter_id=? AND status IN ('draft','scheduled')").run(req.params.id, req.nl.id);
+  await deletePosts(req.nl.id, [Number(req.params.id)]);
   back(res, `/app/n/${req.nl.id}/posts`, '삭제했습니다.');
 });
 

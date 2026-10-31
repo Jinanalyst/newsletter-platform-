@@ -399,7 +399,7 @@
     if (el === subj || el === prev) el.addEventListener('focus', () => { lastFocus = el; });
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty) autosave(true); });
-  window.addEventListener('beforeunload', (e) => { if (dirty && !stopped && cfg.status === 'draft') { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', (e) => { if (dirty && !stopped && (cfg.status === 'draft' || cfg.status === 'sent')) { e.preventDefault(); e.returnValue = ''; } });
 
   // ---------- 미리보기 ----------
   let pvMode = 'web', pvDev = 'd';
