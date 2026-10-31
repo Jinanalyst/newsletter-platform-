@@ -117,7 +117,12 @@ pub.post('/login', async (req, res) => {
   await login(res, u.id);
   res.redirect('/app');
 });
-pub.post('/logout', (req, res) => { res.clearCookie('sid'); res.redirect('/'); });
+// 로그아웃 시 sess_ver 를 올려 다른 호스트(대표 도메인 등)에 남은 로그인도 함께 무효화한다
+pub.post('/logout', async (req, res) => {
+  if (req.user) await db.prepare('UPDATE users SET sess_ver=sess_ver+1 WHERE id=?').run(req.user.id);
+  res.clearCookie('sid');
+  res.redirect('/');
+});
 
 // Google OAuth (환경변수 설정 시에만 동작)
 pub.get('/auth/google', (req, res) => {
