@@ -31,7 +31,8 @@ marked.use({
         const w = Math.min(100, Math.max(5, +o.w || 100));
         return `<img src="${h(safeUrl(href))}" alt="${h(text)}" width="${w}%" style="width:${w}%;max-width:100%;height:auto;display:block;margin:${o.c ? '0 auto' : '0'}">`;
       }
-      return `<img src="${h(safeUrl(href))}" alt="${h(text)}"${title ? ` title="${h(title)}"` : ''}>`;
+      // 네이버 메일 등은 <head> 의 <style> 을 무시하므로 크기 제한을 태그에 직접 쓴다
+      return `<img src="${h(safeUrl(href))}" alt="${h(text)}"${title ? ` title="${h(title)}"` : ''} style="max-width:100%;height:auto;border-radius:4px">`;
     },
   },
 });
@@ -73,6 +74,10 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
   // 상대 경로 이미지(/uploads/..)는 메일에서도 보이도록 절대 경로로
   body = body.replace(/src="\/uploads\//g, `src="${base}/uploads/`);
 
+  // <style> 을 지원하지 않는 메일 앱(네이버 등)을 위해 주요 태그에 스타일을 직접 입힌다
+  body = body.replace(/<blockquote>/g, '<blockquote style="border-left:3px solid #3B82F6;margin:0;padding-left:16px;color:#555">')
+    .replace(/<(h[1-3])>/g, '<$1 style="letter-spacing:-.02em;line-height:1.3">')
+    .replace(/<a href=/g, '<a style="color:#2563EB;text-decoration:underline" href=');
   if (mode === 'email') {
     // 링크 클릭 추적: 링크마다 ID를 먼저 확보(DB)한 뒤 동기 치환
     const ids = new Map();
@@ -107,7 +112,9 @@ ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게
 <style>a{color:#2563EB;text-decoration:underline;text-underline-offset:3px}img{max-width:100%;height:auto;border-radius:4px}blockquote{border-left:3px solid #3B82F6;margin:0;padding-left:16px;color:#555}h1,h2,h3{letter-spacing:-.02em;line-height:1.3}hr{border:none;border-top:1px solid #eee}</style></head>
 <body style="margin:0;background:#fff;font-family:-apple-system,'Inter','Pretendard','Segoe UI','Malgun Gothic',sans-serif;color:#111;line-height:1.75">
 <span style="display:none;max-height:0;overflow:hidden;opacity:0">${h(personalize(post.preview, mode === 'web' ? null : sub, { html: false }))}</span>
-<div style="max-width:600px;margin:0 auto;padding:40px 24px"><div style="font-size:16px">${top}${hero}${body}${foot}${pixel}</div></div></body></html>`;
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%"><tr><td align="center" style="padding:40px 24px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px"><tr><td align="left" style="font-size:16px;word-break:break-word">${top}${hero}${body}${foot}${pixel}</td></tr></table>
+</td></tr></table></body></html>`;
 }
 
 export const toText = (html) =>
