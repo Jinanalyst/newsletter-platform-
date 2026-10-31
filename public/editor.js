@@ -12,6 +12,7 @@
     ['hr', '구분선', '---'], ['img', '이미지', '사진 업로드'], ['paywall', '유료 구간', '여기부터 유료 구독자 전용'],
   ];
   const PH = { p: "텍스트를 입력하거나 '/' 로 블록을 고르세요", h1: '제목 1', h2: '제목 2', h3: '제목 3', ul: '목록 항목', ol: '목록 항목', quote: '인용', code: '코드' };
+  const ALIGNABLE = new Set(['p', 'h1', 'h2', 'h3', 'img']);
   const TEXT = new Set(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'quote', 'code']);
   let uid = 0;
   const mk = (type, text = '', extra = {}) => ({ id: ++uid, type, text, url: '', alt: '', ...extra });
@@ -29,7 +30,7 @@
       if (l.trim() === '[[paywall]]') { out.push(mk('paywall')); i++; continue; }
       if (/^---+\s*$/.test(l)) { out.push(mk('hr')); i++; continue; }
       if ((m = /^(#{1,3})\s+(.*)$/.exec(l))) { out.push(mk('h' + m[1].length, m[2])); i++; continue; }
-      if ((m = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"w=(\d{1,3})")?\)\s*$/.exec(l))) { out.push(mk('img', '', { alt: m[1], url: m[2], w: m[3] ? +m[3] : 0 })); i++; continue; }
+      if ((m = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\s*$/.exec(l))) { const t = m[3] || '', w = /w=(\d{1,3})/.exec(t); out.push(mk('img', '', { alt: m[1], url: m[2], w: w ? +w[1] : 0, align: /(^|;)c=1/.test(t) ? 'center' : '' })); i++; continue; }
       const group = (re, type, strip) => { const buf = []; while (i < L.length && re.test(L[i])) buf.push(L[i++].replace(strip, '')); out.push(mk(type, buf.join('\n'))); };
       // 목록은 항목마다 블록 하나 (노션처럼)
       if (/^[-*]\s+/.test(l)) { while (i < L.length && /^[-*]\s+/.test(L[i])) out.push(mk('ul', L[i++].replace(/^[-*]\s+/, ''))); continue; }
@@ -39,6 +40,7 @@
       while (i < L.length && L[i].trim() && (buf.length === 0 || !START.test(L[i]))) buf.push(L[i++]);
       out.push(mk('p', buf.join('\n')));
     }
+    for (const b of out) if (['p', 'h1', 'h2', 'h3'].includes(b.type) && /^::center /.test(b.text)) { b.text = b.text.replace(/^::center /, ''); b.align = 'center'; }
     return out.length ? out : [mk('p')];
   }
 
@@ -50,15 +52,15 @@
       const one = b.text.replace(/\s*\n+\s*/g, ' ').trim();
       let s = '';
       switch (b.type) {
-        case 'h1': case 'h2': case 'h3': s = one ? '#'.repeat(+b.type[1]) + ' ' + one : ''; break;
+        case 'h1': case 'h2': case 'h3': s = one ? '#'.repeat(+b.type[1]) + ' ' + (b.align ? '::center ' : '') + one : ''; break;
         case 'ul': s = one ? '- ' + one : ''; break;
         case 'ol': s = one ? `${prev === 'ol' ? ++n : (n = 1)}. ${one}` : ''; break;
         case 'quote': s = lines(b.text).map((x) => '> ' + x).join('\n'); break;
         case 'code': s = b.text.trim() ? '```\n' + b.text.replace(/\n+$/, '') + '\n```' : ''; break;
         case 'hr': s = '---'; break;
         case 'paywall': s = '[[paywall]]'; break;
-        case 'img': s = b.url ? `![${b.alt.replace(/[\[\]]/g, '')}](${b.url}${b.w && b.w < 100 ? ` "w=${b.w}"` : ''})` : ''; break;
-        default: s = b.text.replace(/\s+$/, '');
+        case 'img': { const t = [b.w && b.w < 100 ? 'w=' + b.w : '', b.align ? 'c=1' : ''].filter(Boolean).join(';'); s = b.url ? `![${b.alt.replace(/[\[\]]/g, '')}](${b.url}${t ? ` "${t}"` : ''})` : ''; break; }
+        default: s = b.text.replace(/\s+$/, ''); if (s && b.type === 'p' && b.align) s = '::center ' + s;
       }
       if (!s) continue;
       out += (out ? (prev === b.type && (b.type === 'ul' || b.type === 'ol') ? '\n' : '\n\n') : '') + s; // 같은 목록의 항목끼리는 붙여 쓴다
@@ -99,7 +101,7 @@
     const body = $('.bbody', el);
     if (TEXT.has(b.type)) {
       const ta = document.createElement('textarea');
-      ta.rows = 1; ta.value = b.text; ta.placeholder = PH[b.type]; ta.spellcheck = false;
+      ta.rows = 1; ta.value = b.text; if (b.align) ta.style.textAlign = 'center'; ta.placeholder = PH[b.type]; ta.spellcheck = false;
       ta.addEventListener('input', () => onInput(b, ta));
       ta.addEventListener('keydown', (e) => onKey(e, b, ta));
       ta.addEventListener('focus', () => { lastFocus = ta; });
@@ -110,7 +112,7 @@
     else if (b.type === 'img') {
       // 업로드 전에만 주소 입력칸을 보여주고, 업로드 후에는 이미지 + 크기 조절 핸들만 남긴다
       body.innerHTML = b.url
-        ? `<div class="imgwrap" style="width:${b.w || 100}%"><img src="${esc(b.url)}" alt="${esc(b.alt)}" draggable="false"><span class="irz" title="드래그해서 크기 조절"></span><span class="iw"></span></div>
+        ? `<div class="imgwrap" style="width:${b.w || 100}%${b.align ? ';margin:0 auto' : ''}"><img src="${esc(b.url)}" alt="${esc(b.alt)}" draggable="false"><span class="irz" title="드래그해서 크기 조절"></span><span class="iw"></span></div>
           <div class="imgctl imgctl-s"><input class="ialt" placeholder="대체 텍스트(설명)" value="${esc(b.alt)}"><button type="button" class="sm iup">이미지 교체</button><input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`
         : `<div class="imgctl"><input class="iurl" placeholder="이미지 주소 (https://…) 또는 업로드" value=""><button type="button" class="sm iup">업로드</button><input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`;
       const url = $('.iurl', body), alt = $('.ialt', body), file = $('input[type=file]', body);
@@ -120,7 +122,7 @@
       if (wrap) $('.irz', body).addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation();
         const full = body.clientWidth, label = $('.iw', body); wrap.classList.add('rz');
-        const mv = (ev) => { const r = wrap.getBoundingClientRect(); b.w = Math.max(10, Math.min(100, Math.round(((ev.clientX - r.left) / full) * 100))); wrap.style.width = b.w + '%'; label.textContent = b.w + '%'; };
+        const mv = (ev) => { const r = wrap.getBoundingClientRect(); b.w = Math.max(10, Math.min(100, Math.round((b.align ? ((ev.clientX - (r.left + r.width / 2)) * 2) / full : (ev.clientX - r.left) / full) * 100))); wrap.style.width = b.w + '%'; label.textContent = b.w + '%'; };
         const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); wrap.classList.remove('rz'); changed(); };
         document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
       });
@@ -129,7 +131,7 @@
     }
     $('.g-add', el).onclick = (e) => openMenu(e.currentTarget, '', (key) => insertAfter(b.id, key));
     const handle = $('.g-handle', el);
-    handle.onclick = (e) => openMenu(e.currentTarget, '', (key) => (key === '_del' ? remove(b.id) : key === '_up' ? move(b.id, -1) : key === '_down' ? move(b.id, 1) : key === '_dup' ? dup(b.id) : retype(b.id, key)), true);
+    handle.onclick = (e) => openMenu(e.currentTarget, '', (key) => (key === '_del' ? remove(b.id) : key === '_align' ? toggleAlign(b.id) : key === '_up' ? move(b.id, -1) : key === '_down' ? move(b.id, 1) : key === '_dup' ? dup(b.id) : retype(b.id, key)), b);
     handle.addEventListener('mousedown', () => { el.draggable = true; });
     el.addEventListener('dragend', () => { el.draggable = false; clearDrop(); });
     el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(b.id)); el.classList.add('dragging'); });
@@ -155,12 +157,14 @@
   }
   function retype(id, type) {
     const b = blocks[idx(id)]; if (!b) return;
+    if (!ALIGNABLE.has(type)) b.align = '';
     const keep = TEXT.has(b.type) && TEXT.has(type) ? b.text : '';
     Object.assign(b, { type, text: keep });
     if (['hr', 'paywall'].includes(type) && blocks[idx(id) + 1]?.type !== 'p') blocks.splice(idx(id) + 1, 0, mk('p'));
     changed(); render(TEXT.has(type) ? id : null);
     if (type === 'img') setTimeout(() => $(`.blk[data-id="${id}"] .iup`)?.click(), 0);
   }
+  function toggleAlign(id) { const b = blocks[idx(id)]; if (!b) return; b.align = b.align ? '' : 'center'; changed(); render(TEXT.has(b.type) ? id : null); }
   function remove(id) { const i = idx(id); blocks.splice(i, 1); if (!blocks.length) blocks.push(mk('p')); changed(); render((blocks[Math.max(0, i - 1)] || blocks[0]).id); }
   function move(id, d) { const i = idx(id), j = i + d; if (j < 0 || j >= blocks.length) return; [blocks[i], blocks[j]] = [blocks[j], blocks[i]]; changed(); render(TEXT.has(blocks[j].type) ? id : null); }
   function dup(id) { const i = idx(id), c = { ...blocks[i], id: ++uid }; blocks.splice(i + 1, 0, c); changed(); render(c.id); }
@@ -208,7 +212,7 @@
     closeMenu();
     const f = filter.toLowerCase();
     menuItems = TYPES.filter(([k, l, d]) => !f || l.includes(f) || k.includes(f) || d.includes(f)).map(([k, l, d]) => ({ key: k, label: l, desc: d }));
-    if (extra) menuItems.push({ key: '_up', label: '위로 이동', desc: '' }, { key: '_down', label: '아래로 이동', desc: '' }, { key: '_dup', label: '복제', desc: '' }, { key: '_del', label: '삭제', desc: '' });
+    if (extra) menuItems.push(...(ALIGNABLE.has(extra.type) ? [{ key: '_align', label: extra.align ? '왼쪽 정렬' : '가운데 정렬', desc: '' }] : []), { key: '_up', label: '위로 이동', desc: '' }, { key: '_down', label: '아래로 이동', desc: '' }, { key: '_dup', label: '복제', desc: '' }, { key: '_del', label: '삭제', desc: '' });
     if (!menuItems.length) return;
     menuPick = pick; menuSel = 0;
     menu = document.createElement('div'); menu.className = 'bmenu';

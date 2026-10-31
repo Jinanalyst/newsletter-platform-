@@ -14,15 +14,23 @@ async function linkId(postId, url) {
 // ---------- 보안: 본문(마크다운) 안의 원시 HTML은 실행하지 않고 글자로 보여준다 ----------
 // 발행자는 누구나 가입할 수 있으므로, <script> 등을 허용하면 공개 페이지를 보는 다른 사용자의 세션으로 동작이 실행될 수 있다.
 const safeUrl = (u = '') => (/^(https?:|mailto:|\/(?!\/)|#)/i.test(String(u).trim()) ? String(u).trim() : '#');
+const CENTER = /^::center /;
+const centered = (tokens) => (tokens[0]?.type === 'text' && CENTER.test(tokens[0].raw) ? [[{ ...tokens[0], raw: tokens[0].raw.replace(CENTER, ''), text: tokens[0].text.replace(CENTER, '') }, ...tokens.slice(1)], true] : [tokens, false]);
 marked.use({
   renderer: {
     html: ({ text }) => h(text),
     link({ href, title, tokens }) {
       return `<a href="${h(safeUrl(href))}"${title ? ` title="${h(title)}"` : ''}>${this.parser.parseInline(tokens)}</a>`;
     },
+    // 가운데 정렬: 문단·제목 맨 앞의 "::center " 표시를 읽어 style 로 바꾼다
+    paragraph({ tokens }) { const [t, c] = centered(tokens); return `<p${c ? ' style="text-align:center"' : ''}>${this.parser.parseInline(t)}</p>\n`; },
+    heading({ tokens, depth }) { const [t, c] = centered(tokens); return `<h${depth}${c ? ' style="text-align:center"' : ''}>${this.parser.parseInline(t)}</h${depth}>\n`; },
     image({ href, title, text }) {
-      const w = /^w=(\d{1,3})$/.exec(title || ''); // 에디터에서 조절한 이미지 너비(%)
-      if (w) return `<img src="${h(safeUrl(href))}" alt="${h(text)}" width="${Math.min(100, +w[1])}%" style="width:${Math.min(100, +w[1])}%;max-width:100%;height:auto">`;
+      const o = Object.fromEntries(String(title || '').split(';').map((x) => x.split('='))); // 에디터가 쓰는 title: "w=60;c=1" (너비 %, 가운데)
+      if (o.w || o.c) {
+        const w = Math.min(100, Math.max(5, +o.w || 100));
+        return `<img src="${h(safeUrl(href))}" alt="${h(text)}" width="${w}%" style="width:${w}%;max-width:100%;height:auto;display:block;margin:${o.c ? '0 auto' : '0'}">`;
+      }
       return `<img src="${h(safeUrl(href))}" alt="${h(text)}"${title ? ` title="${h(title)}"` : ''}>`;
     },
   },
