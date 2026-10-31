@@ -17,7 +17,7 @@
   const mk = (type, text = '', extra = {}) => ({ id: ++uid, type, text, url: '', alt: '', ...extra });
 
   // ---------- 마크다운 → 블록 ----------
-  const START = /^(```|#{1,3}\s|[-*]\s+|\d+\.\s+|>|---+\s*$|!\[[^\]]*\]\([^)\s]+\)\s*$|\[\[paywall\]\]\s*$)/;
+  const START = /^(```|#{1,3}\s|[-*]\s+|\d+\.\s+|>|---+\s*$|!\[[^\]]*\]\([^)]+\)\s*$|\[\[paywall\]\]\s*$)/;
   function parse(md) {
     const L = String(md || '').replace(/\r/g, '').split('\n'), out = [];
     let i = 0;
@@ -29,7 +29,7 @@
       if (l.trim() === '[[paywall]]') { out.push(mk('paywall')); i++; continue; }
       if (/^---+\s*$/.test(l)) { out.push(mk('hr')); i++; continue; }
       if ((m = /^(#{1,3})\s+(.*)$/.exec(l))) { out.push(mk('h' + m[1].length, m[2])); i++; continue; }
-      if ((m = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(l))) { out.push(mk('img', '', { alt: m[1], url: m[2] })); i++; continue; }
+      if ((m = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"w=(\d{1,3})")?\)\s*$/.exec(l))) { out.push(mk('img', '', { alt: m[1], url: m[2], w: m[3] ? +m[3] : 0 })); i++; continue; }
       const group = (re, type, strip) => { const buf = []; while (i < L.length && re.test(L[i])) buf.push(L[i++].replace(strip, '')); out.push(mk(type, buf.join('\n'))); };
       // 목록은 항목마다 블록 하나 (노션처럼)
       if (/^[-*]\s+/.test(l)) { while (i < L.length && /^[-*]\s+/.test(L[i])) out.push(mk('ul', L[i++].replace(/^[-*]\s+/, ''))); continue; }
@@ -57,7 +57,7 @@
         case 'code': s = b.text.trim() ? '```\n' + b.text.replace(/\n+$/, '') + '\n```' : ''; break;
         case 'hr': s = '---'; break;
         case 'paywall': s = '[[paywall]]'; break;
-        case 'img': s = b.url ? `![${b.alt.replace(/[\[\]]/g, '')}](${b.url})` : ''; break;
+        case 'img': s = b.url ? `![${b.alt.replace(/[\[\]]/g, '')}](${b.url}${b.w && b.w < 100 ? ` "w=${b.w}"` : ''})` : ''; break;
         default: s = b.text.replace(/\s+$/, '');
       }
       if (!s) continue;
@@ -108,11 +108,22 @@
     } else if (b.type === 'hr') body.innerHTML = '<hr>';
     else if (b.type === 'paywall') body.innerHTML = '<div class="pw">여기부터 유료 구독자 전용</div>';
     else if (b.type === 'img') {
-      body.innerHTML = `${b.url ? `<img src="${esc(b.url)}" alt="">` : ''}<div class="imgctl"><input class="iurl" placeholder="이미지 주소 (https://…) 또는 업로드" value="${esc(b.url)}"><input class="ialt" placeholder="대체 텍스트(설명)" value="${esc(b.alt)}">
-        <button type="button" class="sm iup">업로드</button><input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`;
+      // 업로드 전에만 주소 입력칸을 보여주고, 업로드 후에는 이미지 + 크기 조절 핸들만 남긴다
+      body.innerHTML = b.url
+        ? `<div class="imgwrap" style="width:${b.w || 100}%"><img src="${esc(b.url)}" alt="${esc(b.alt)}" draggable="false"><span class="irz" title="드래그해서 크기 조절"></span><span class="iw"></span></div>
+          <div class="imgctl imgctl-s"><input class="ialt" placeholder="대체 텍스트(설명)" value="${esc(b.alt)}"><button type="button" class="sm iup">이미지 교체</button><input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`
+        : `<div class="imgctl"><input class="iurl" placeholder="이미지 주소 (https://…) 또는 업로드" value=""><button type="button" class="sm iup">업로드</button><input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`;
       const url = $('.iurl', body), alt = $('.ialt', body), file = $('input[type=file]', body);
-      url.onchange = () => { b.url = /^(https?:\/\/|\/uploads\/)/.test(url.value.trim()) ? url.value.trim() : ''; changed(); render(); };
-      alt.oninput = () => { b.alt = alt.value; changed(); };
+      if (url) url.onchange = () => { b.url = /^(https?:\/\/|\/uploads\/)/.test(url.value.trim()) ? url.value.trim() : ''; changed(); render(); ensureTextAfter(b.id); };
+      if (alt) alt.oninput = () => { b.alt = alt.value; changed(); };
+      const wrap = $('.imgwrap', body);
+      if (wrap) $('.irz', body).addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const full = body.clientWidth, label = $('.iw', body); wrap.classList.add('rz');
+        const mv = (ev) => { const r = wrap.getBoundingClientRect(); b.w = Math.max(10, Math.min(100, Math.round(((ev.clientX - r.left) / full) * 100))); wrap.style.width = b.w + '%'; label.textContent = b.w + '%'; };
+        const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); wrap.classList.remove('rz'); changed(); };
+        document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+      });
       $('.iup', body).onclick = () => file.click();
       file.onchange = async () => { if (file.files[0]) await uploadInto(b, file.files[0]); };
     }
@@ -227,8 +238,13 @@
     const r = await fetch('/app/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) });
     const j = await r.json(); if (!r.ok) throw new Error(j.error || '업로드 실패'); return j.url;
   }
+  // 이미지 아래에 항상 글을 이어 쓸 수 있도록 빈 본문 블록을 보장한다
+  function ensureTextAfter(id) {
+    const i = idx(id); if (i < 0 || (blocks[i + 1] && TEXT.has(blocks[i + 1].type))) return;
+    const p = mk('p'); blocks.splice(i + 1, 0, p); changed(); render(p.id);
+  }
   async function uploadInto(b, file) {
-    try { setState('이미지 업로드 중…'); b.url = await uploadFile(file); changed(); render(); }
+    try { setState('이미지 업로드 중…'); b.url = await uploadFile(file); b.w = 0; changed(); render(); ensureTextAfter(b.id); }
     catch (e) { setState(e.message); }
   }
   async function addImageAfterFocus(file) {

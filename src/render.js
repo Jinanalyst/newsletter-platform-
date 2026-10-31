@@ -21,6 +21,8 @@ marked.use({
       return `<a href="${h(safeUrl(href))}"${title ? ` title="${h(title)}"` : ''}>${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, title, text }) {
+      const w = /^w=(\d{1,3})$/.exec(title || ''); // 에디터에서 조절한 이미지 너비(%)
+      if (w) return `<img src="${h(safeUrl(href))}" alt="${h(text)}" width="${Math.min(100, +w[1])}%" style="width:${Math.min(100, +w[1])}%;max-width:100%;height:auto">`;
       return `<img src="${h(safeUrl(href))}" alt="${h(text)}"${title ? ` title="${h(title)}"` : ''}>`;
     },
   },
