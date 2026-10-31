@@ -4,7 +4,7 @@ import express from 'express';
 import dns from 'node:dns/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { db, now, baseUrl, publicHost } from './db.js';
-import { requireUser } from './auth.js';
+import { requireUser, login, createToken, checkToken } from './auth.js';
 import { h } from './render.js';
 import { sendMail } from './mail.js';
 import { findNewsletter } from './access.js';
@@ -48,6 +48,27 @@ export async function domainRouter(req, res, next) {
     next();
   } catch (e) { next(e); }
 }
+
+// ---------- 대표 도메인에서 공개 페이지 편집 ----------
+// 로그인 쿠키는 호스트별이라 <이름>.lett.live · 커스텀 도메인에서는 로그인이 풀려 보인다.
+// 소유자가 대시보드의 "공개 페이지" 링크를 누르면 1회용 토큰으로 그 도메인에서도 로그인시켜 레이아웃 편집을 쓸 수 있게 한다.
+workspace.get('/app/n/:nid/edit-public', requireUser, async (req, res) => {
+  const nl = await findNewsletter(req.params.nid, req.user);
+  if (!nl?.is_owner) return res.status(403).page('권한 없음', '<p>소유자만 할 수 있는 작업입니다. <a href="/app">내 뉴스레터</a></p>');
+  const host = publicHost(nl);
+  if (!host) return res.redirect(`/n/${nl.slug}`);
+  res.redirect(`https://${host}/edit-login?t=${await createToken(req.user.id, 'pubedit', 120e3)}`);
+});
+workspace.get('/edit-login', async (req, res) => {
+  const host = String(req.hostname || '').toLowerCase(), base = PLATFORM_DOMAIN();
+  const nl = host.endsWith('.' + base)
+    ? await db.prepare('SELECT * FROM newsletters WHERE subdomain=?').get(host.slice(0, -base.length - 1))
+    : await db.prepare('SELECT * FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL').get(host);
+  const uid = nl && await checkToken(req.query.t, 'pubedit', true);
+  if (!uid || uid !== nl.owner_id) return res.redirect('/');
+  await login(res, uid);
+  res.redirect('/');
+});
 
 // ---------- 설정 하위 화면 (소유자 전용) ----------
 const owner = async (req, res, next) => {

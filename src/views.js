@@ -1,5 +1,5 @@
 import { h } from './render.js';
-import { publicUrl } from './db.js';
+import { publicUrl, publicHost } from './db.js';
 import { bizInfo } from './business.js';
 import { FAVICON } from './landing.js';
 import { tr, LOCALES, langSwitcher } from './i18n.js';
@@ -189,7 +189,7 @@ export function page(title, body, { user = null, nl = null, active = '', wide = 
     nav = `<nav><a href="/app">←</a><a href="/app/n/${nl.id}" class="brand"><b>${h(nl.name)}</b></a>
 ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['automation', '자동화'], ['traffic', '유입'], ['revenue', '수익'], ['settings', '설정']]
   .map(([p, l]) => `<a href="/app/n/${nl.id}${p ? '/' + p : ''}" class="${active === p ? 'on' : ''}">${l}</a>`).join('')}
-<span class="sp"></span><a href="${h(publicUrl(nl))}" target="_blank" rel="noopener">공개 페이지 ↗</a>${logout}</nav>`;
+<span class="sp"></span><a href="${nl.is_owner && publicHost(nl) ? `/app/n/${nl.id}/edit-public` : h(publicUrl(nl))}" target="_blank" rel="noopener">공개 페이지 ↗</a>${logout}</nav>`;
   } else if (user) {
     nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><a href="/app" class="${active === 'app' ? 'on' : ''}">${t('내 뉴스레터')}</a>
 <a href="/create" class="${active === 'create' ? 'on' : ''}">${t('크리에이트')}</a>
