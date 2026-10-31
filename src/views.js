@@ -112,6 +112,7 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .sm-select{width:auto;font-size:12.5px;padding:3px 8px}
 .blocks{padding:12px 12px 12px 4px;min-height:320px;max-height:70vh;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:text;scrollbar-width:thin}
 .blocks .blk{cursor:auto}
+.thumbrow{align-items:center}.thumbbox img{display:block;height:56px;width:100px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}.thumbbox[hidden]{display:none}
 .ttl{border:0;background:transparent;font-size:40px;font-weight:700;line-height:1.25;letter-spacing:-.03em;padding:8px 8px 4px 30px;border-radius:0}
 .ttl:focus,.sub:focus{border:0;box-shadow:none;background:transparent}
 .sub{border:0;background:transparent;color:var(--mute);font-size:16px;padding:2px 8px 10px 30px;border-radius:0}

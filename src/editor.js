@@ -53,13 +53,16 @@ function content(b) {
   return { subject: String(b.subject || '').trim().slice(0, 200), preview: String(b.preview || '').slice(0, 300), body_md: String(b.body_md || '').slice(0, 500_000) };
 }
 
+// 대표 이미지(썸네일): 업로드한 파일이나 https 주소만 허용
+const cleanThumb = (u) => (/^(https?:\/\/|\/uploads\/)\S+$/.test(String(u || '').trim()) ? String(u).trim().slice(0, 500) : '');
+
 // 변경 전 내용을 기록해 두고(처음 저장 시) 새 내용으로 갱신
 async function applyContent(p, nl, b) {
   const c = content(b);
   if (!await hasVersions(p.id) && (p.subject || p.body_md)) await snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'initial', true);
   const t = now();
-  await db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, updated_at=? WHERE id=?')
-    .run(c.subject, c.preview, c.body_md, cleanCategory(nl, b.category), cleanTags(b.tags), ['paid', 'free'].includes(b.audience) ? b.audience : 'all', t, p.id);
+  await db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, thumb=?, updated_at=? WHERE id=?')
+    .run(c.subject, c.preview, c.body_md, cleanCategory(nl, b.category), cleanTags(b.tags), ['paid', 'free'].includes(b.audience) ? b.audience : 'all', cleanThumb(b.thumb), t, p.id);
   return { c, t };
 }
 
@@ -131,6 +134,8 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
 <div class="props"><span class="pk">분류</span><select name="category"><option value="">없음</option>${cats.map((x) => `<option ${p.category === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select>
 ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설정</a>에서 만들 수 있어요</span>`}
 <span class="pk">태그</span><input name="tags" value="${h(p.tags)}" placeholder="쉼표로 구분 (예: 에세이, 일상)" aria-label="태그"></div>
+<div class="props thumbrow"><span class="pk">썸네일</span><input type="hidden" name="thumb" id="thumb" value="${h(p.thumb || '')}"><div class="thumbbox" id="thumbbox"></div>
+<button type="button" class="sm" id="thumbup">대표 이미지 업로드</button><button type="button" class="sm" id="thumbdel" hidden>제거</button><input type="file" id="thumbfile" accept="image/png,image/jpeg,image/gif,image/webp" hidden><span class="mute">공개 페이지 목록과 공유 미리보기에 표시됩니다</span></div>
 <div class="tools" id="tools">
 <select id="merge" class="sm-select"><option value="">메일 머지 ▾</option><option value="{{name}}">{{name}} 닉네임</option><option value="{{name|독자}}">{{name|독자}} 없으면 '독자'</option><option value="{{email}}">{{email}} 이메일</option></select>
 <select id="tplsel" class="sm-select"><option value="">템플릿 ▾</option>${tpls.map((t) => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>

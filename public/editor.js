@@ -357,7 +357,20 @@
 
   // ---------- 현재 내용 · 변경 추적 ----------
   const current = () => ({ subject: subj.value, preview: prev.value, body_md: rawMode ? rawEl.value : serialize(blocks) });
-  const payload = () => ({ ...current(), category: form.elements.category.value, tags: form.elements.tags.value, audience: form.elements.audience.value });
+  // ---------- 썸네일 (대표 이미지) ----------
+  const thumbEl = $('#thumb'), thumbBox = $('#thumbbox'), thumbDel = $('#thumbdel'), thumbFile = $('#thumbfile');
+  function paintThumb() {
+    thumbBox.innerHTML = thumbEl.value ? `<img src="${esc(thumbEl.value)}" alt="">` : '';
+    thumbBox.hidden = !thumbEl.value; thumbDel.hidden = !thumbEl.value; $('#thumbup').textContent = thumbEl.value ? '대표 이미지 교체' : '대표 이미지 업로드';
+  }
+  $('#thumbup').onclick = () => thumbFile.click();
+  thumbDel.onclick = () => { thumbEl.value = ''; paintThumb(); changed(); };
+  thumbFile.onchange = async () => {
+    const f = thumbFile.files[0]; if (!f) return;
+    try { setState('썸네일 업로드 중…'); thumbEl.value = await uploadFile(f); paintThumb(); changed(); } catch (e) { setState(e.message); }
+    thumbFile.value = '';
+  };
+  const payload = () => ({ ...current(), category: form.elements.category.value, tags: form.elements.tags.value, audience: form.elements.audience.value, thumb: thumbEl.value });
   let dirty = false, saveTimer = 0, pvTimer = 0, stopped = false, saving = false;
   const setState = (t) => { stateEl.textContent = t; };
   const hhmm = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
@@ -426,6 +439,7 @@
   form.addEventListener('submit', () => { bodyField.value = current().body_md; tz.value = String(new Date().getTimezoneOffset()); dirty = false; clearTimeout(saveTimer); });
 
   render();
+  paintThumb();
   bodyField.value = current().body_md;
   dirty = false;
 })();

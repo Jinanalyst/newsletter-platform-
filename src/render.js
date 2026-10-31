@@ -88,6 +88,7 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
   const top = mode === 'web'
     ? `<p style="margin:0 0 20px;font-size:14px"><a href="${base}/n/${h(nl.slug)}" style="color:#888;text-decoration:none">← ${h(nl.name)}</a></p><h1 style="margin-top:0">${h(personalize(post.subject, null, { html: false }))}</h1>${chips ? `<p style="font-size:13px;margin:-4px 0 24px">${chips}</p>` : ''}`
     : '';
+  const hero = mode === 'web' && /^(https?:\/\/|\/uploads\/)/.test(post.thumb || '') ? `<img src="${h(post.thumb)}" alt="" style="display:block;width:100%;margin:0 0 24px;border-radius:8px">` : '';
   const unsub = sub?.token ? `${base}/unsubscribe/${sub.token}` : `${base}/n/${nl.slug}`;
   const pageUrl = publicUrl(nl, `/p/${post.id}`);
   const share = `<p style="font-size:14px">${t('공유:')} <a href="#" onclick="navigator.clipboard.writeText('${pageUrl}');this.textContent='${t('복사됨 ✓')}';return false">${t('링크 복사')}</a> ·
@@ -100,13 +101,13 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
 ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게 추천하기</a> · ` : ''}${sub?.token && hasPaid(nl) && !isPaid(sub) ? `<a href="${upgrade}" style="color:#888">유료 구독</a> · ` : ''}<a href="${unsub}" style="color:#888">구독 해지</a></p></div>`;
   const pixel = mode === 'email' ? `<img src="${base}/t/o/${tok}" width="1" height="1" alt="" style="display:none">` : '';
   const og = mode === 'web' && post.id ? `<title>${h(post.subject)} — ${h(nl.name)}</title><meta property="og:type" content="article"><meta property="og:title" content="${h(post.subject)}">
-<meta property="og:description" content="${h(post.preview || nl.description)}"><meta property="og:url" content="${pageUrl}">${nl.logo ? `<meta property="og:image" content="${base}${h(nl.logo)}">` : ''}<meta name="twitter:card" content="summary">` : '';
+<meta property="og:description" content="${h(post.preview || nl.description)}"><meta property="og:url" content="${pageUrl}">${post.thumb ? `<meta property="og:image" content="${post.thumb.startsWith('/') ? base : ''}${h(post.thumb)}">` : nl.logo ? `<meta property="og:image" content="${base}${h(nl.logo)}">` : ''}<meta name="twitter:card" content="${post.thumb ? 'summary_large_image' : 'summary'}">` : '';
 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${og}
 <style>a{color:#2563EB;text-decoration:underline;text-underline-offset:3px}img{max-width:100%;height:auto;border-radius:4px}blockquote{border-left:3px solid #3B82F6;margin:0;padding-left:16px;color:#555}h1,h2,h3{letter-spacing:-.02em;line-height:1.3}hr{border:none;border-top:1px solid #eee}</style></head>
 <body style="margin:0;background:#fff;font-family:-apple-system,'Inter','Pretendard','Segoe UI','Malgun Gothic',sans-serif;color:#111;line-height:1.75">
 <span style="display:none;max-height:0;overflow:hidden;opacity:0">${h(personalize(post.preview, mode === 'web' ? null : sub, { html: false }))}</span>
-<div style="max-width:600px;margin:0 auto;padding:40px 24px"><div style="font-size:16px">${top}${body}${foot}${pixel}</div></div></body></html>`;
+<div style="max-width:600px;margin:0 auto;padding:40px 24px"><div style="font-size:16px">${top}${hero}${body}${foot}${pixel}</div></div></body></html>`;
 }
 
 export const toText = (html) =>
