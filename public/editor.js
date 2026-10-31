@@ -261,7 +261,13 @@
   // ---------- 도구 막대 ----------
   const wrapSel = (open, close, ph) => {
     const t = lastFocus; if (!t || t.closest?.('.t-code')) return;
-    const s = t.selectionStart, e = t.selectionEnd, sel = t.value.slice(s, e) || ph;
+    const s = t.selectionStart, e = t.selectionEnd, v = t.value, sel = v.slice(s, e) || ph;
+    const isLink = open === '[';
+    // 이미 같은 서식이면 다시 눌렀을 때 해제 (굵게를 두 번 눌러 ****글**** 이 되는 것 방지)
+    if (!isLink && e > s) {
+      if (v.slice(Math.max(0, s - open.length), s) === open && v.slice(e, e + close.length) === close) { t.setRangeText(sel, s - open.length, e + close.length, 'select'); t.dispatchEvent(new Event('input', { bubbles: true })); t.focus(); return; }
+      if (sel.length >= open.length + close.length && sel.startsWith(open) && sel.endsWith(close)) { t.setRangeText(sel.slice(open.length, sel.length - close.length), s, e, 'select'); t.dispatchEvent(new Event('input', { bubbles: true })); t.focus(); return; }
+    }
     t.setRangeText(open + sel + close, s, e, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); t.focus();
   };
   const format = (k) => {
@@ -284,6 +290,11 @@
   document.addEventListener('mouseup', () => setTimeout(() => showFbar(document.activeElement), 0));
   document.addEventListener('keyup', (e) => { if (e.shiftKey || e.key.startsWith('Arrow')) showFbar(document.activeElement); else if (fbar.hidden === false && document.activeElement.selectionStart === document.activeElement.selectionEnd) fbar.hidden = true; });
   document.addEventListener('mousedown', (e) => { if (!fbar.contains(e.target)) fbar.hidden = true; });
+  // 글칸을 벗어나거나 스크롤하거나 Esc 를 누르면 서식 도구를 숨긴다
+  blocksEl.addEventListener('focusout', () => setTimeout(() => { if (!document.activeElement?.closest?.('#blocks')) fbar.hidden = true; }, 0));
+  blocksEl.addEventListener('scroll', () => { fbar.hidden = true; });
+  window.addEventListener('scroll', () => { fbar.hidden = true; }, { passive: true });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fbar.hidden = true; });
   document.addEventListener('input', () => { fbar.hidden = true; });
   document.addEventListener('paste', () => { fbar.hidden = true; });
   // 단축키: Ctrl/Cmd + B · I · K

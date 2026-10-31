@@ -121,6 +121,7 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .props input{min-width:220px}
 .tools{padding-left:30px;opacity:.75}.tools:hover,.tools:focus-within{opacity:1}
 .fbar{position:absolute;z-index:60;display:flex;gap:2px;background:var(--ink);border-radius:8px;padding:3px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.fbar[hidden]{display:none}
 .fbar button{border:0;background:none;color:var(--card);border-radius:5px;padding:4px 10px;font-size:13px}
 .fbar button:hover{background:rgba(255,255,255,.18);border:0}
 .blk{display:flex;gap:2px;align-items:flex-start;padding:1px 0;border-radius:4px}
