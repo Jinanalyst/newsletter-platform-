@@ -290,6 +290,26 @@ workspace.post('/team/accept/:token', requireUser, async (req, res) => {
   res.redirect(`/app/n/${m.newsletter_id}`);
 });
 
+// ---------- 팀 채팅 (소유자 + 참여 중인 팀원) ----------
+// 서버리스(Vercel)라 웹소켓 대신 짧은 주기 폴링으로 실시간처럼 보이게 한다. after 보다 큰 id 만 돌려준다
+const member = async (req, res, next) => {
+  req.nl = await findNewsletter(req.params.nid, req.user);
+  if (!req.nl) return res.status(404).json({ error: 'not_found' });
+  next();
+};
+workspace.get('/app/n/:nid/chat', requireUser, member, async (req, res) => {
+  const after = Math.max(0, parseInt(req.query.after, 10) || 0);
+  const rows = await db.prepare(`SELECT * FROM (SELECT m.id, m.user_id, m.body, m.created_at, COALESCE(NULLIF(u.name,''), u.email) AS name
+    FROM team_messages m JOIN users u ON u.id=m.user_id WHERE m.newsletter_id=? AND m.id>? ORDER BY m.id DESC LIMIT 100) t ORDER BY id`).all(req.nl.id, after);
+  res.set('Cache-Control', 'no-store').json({ me: req.user.id, messages: rows });
+});
+workspace.post('/app/n/:nid/chat', requireUser, member, async (req, res) => {
+  const body = String(req.body.body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const id = (await db.prepare('INSERT INTO team_messages(newsletter_id,user_id,body,created_at) VALUES(?,?,?,?)').run(req.nl.id, req.user.id, body, now())).lastInsertRowid;
+  res.json({ id });
+});
+
 // ---------- 공개 API (/api/v1) ----------
 export const api = Router();
 api.use('/api/v1', express.json({ limit: '100kb' }));

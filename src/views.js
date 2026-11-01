@@ -173,7 +173,52 @@ iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:16px;b
 .check li.done{color:var(--mute)}
 .check li.done .dot{background:var(--blue);border-color:var(--blue)}
 .check li.done a{color:var(--mute)}
+/* 팀 채팅 패널 (bubble=생략 · bar=축소 · open=기본 · max=확장) */
+#tchat{position:fixed;right:20px;bottom:20px;z-index:90;font-size:14px}
+.tc-box{width:340px;height:480px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 48px -18px rgba(15,23,42,.35);overflow:hidden}
+.tc-head{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;border-bottom:1px solid var(--line);cursor:default;user-select:none}
+.tc-head b{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-head b small{color:var(--mute);font-weight:400;font-size:12px;margin-left:6px}
+.tc-head button{border:0;background:none;padding:0;width:28px;height:28px;border-radius:8px;color:var(--mute);font-size:15px;line-height:28px;text-align:center}
+.tc-head button:hover{background:var(--soft);color:var(--ink);border:0}
+.tc-badge:empty,.tc-bubble i:empty{display:none}
+.tc-badge,.tc-bubble i{background:var(--blue);color:#fff;border-radius:999px;font-size:11px;font-weight:600;line-height:18px;min-width:18px;padding:0 6px;text-align:center;font-style:normal}
+.tc-list{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:4px;overscroll-behavior:contain;scrollbar-width:thin;background:var(--bg)}
+.tc-day{align-self:center;font-size:11.5px;color:var(--mute);margin:8px 0 4px}
+.tc-empty{margin:auto;text-align:center;color:var(--mute);font-size:13px}
+.tc-msg{max-width:82%;align-self:flex-start;display:flex;flex-direction:column;align-items:flex-start}
+.tc-msg b{font-size:12px;font-weight:600;color:var(--mute);margin:6px 0 2px 2px}
+.tc-msg p{margin:0;padding:7px 12px;border-radius:14px 14px 14px 4px;background:var(--card);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;line-height:1.5}
+.tc-msg time{font-size:10.5px;color:#94A3B8;margin:1px 4px 0}
+.tc-msg.me{align-self:flex-end;align-items:flex-end}
+.tc-msg.me p{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);border-radius:14px 14px 4px 14px}
+.tc-form{display:flex;gap:8px;align-items:flex-end;padding:10px;border-top:1px solid var(--line)}
+.tc-form textarea{font:inherit;font-size:14px;resize:none;height:40px;max-height:120px;padding:9px 12px;border-radius:12px;line-height:1.45}
+.tc-form button{padding:8px 14px;flex:0 0 auto}
+.tc-bubble{display:none;position:relative;width:52px;height:52px;padding:0;border-radius:50%;background:var(--accent);color:var(--accent-ink);border:0;box-shadow:0 12px 28px -10px rgba(15,23,42,.5);font-size:22px;line-height:52px}
+.tc-bubble:hover{border:0;transform:translateY(-1px)}
+.tc-bubble i{position:absolute;top:-4px;right:-4px}
+#tchat[data-state=bubble] .tc-box{display:none}
+#tchat[data-state=bubble] .tc-bubble{display:block}
+#tchat[data-state=bar] .tc-box{height:auto}
+#tchat[data-state=bar] .tc-list,#tchat[data-state=bar] .tc-form{display:none}
+#tchat[data-state=bar] .tc-head{border-bottom:0;cursor:pointer}
+#tchat[data-state=open] .tc-badge,#tchat[data-state=max] .tc-badge{display:none}
+#tchat[data-state=max]{top:0;right:0;bottom:0}
+#tchat[data-state=max] .tc-box{width:min(460px,100vw);height:100%;border-radius:0;border-width:0 0 0 1px}
+#tchat .ico-fold::before{content:'—'}#tchat[data-state=bar] .ico-fold::before{content:'▴'}
+#tchat .ico-max::before{content:'⤢'}#tchat[data-state=max] .ico-max::before{content:'⤡'}
+@media(max-width:560px){#tchat{right:12px;bottom:12px}.tc-box{width:calc(100vw - 24px);height:70vh}#tchat[data-state=max] .tc-box{width:100vw}}
 `;
+
+// 팀원이 있는 뉴스레터의 운영 화면에 붙는 팀 채팅 (동작은 /static/teamchat.js)
+const teamChat = (nl) => `<div id="tchat" data-nid="${nl.id}" data-state="bar">
+<div class="tc-box"><div class="tc-head"><b>팀 채팅<small>${nl.team_n + 1}명</small></b><span class="tc-badge"></span>
+<button type="button" data-act="fold" class="ico-fold" title="축소 / 펼치기" aria-label="축소 / 펼치기"></button><button type="button" data-act="max" class="ico-max" title="확장 / 기본 크기" aria-label="확장 / 기본 크기"></button><button type="button" data-act="hide" title="생략 (아이콘으로 숨기기)" aria-label="생략">✕</button></div>
+<div class="tc-list" aria-live="polite"></div>
+<form class="tc-form"><textarea placeholder="메시지 입력" title="Enter 전송 · Shift+Enter 줄바꿈" maxlength="2000" rows="1"></textarea><button class="primary">전송</button></form></div>
+<button type="button" class="tc-bubble" title="팀 채팅 열기" aria-label="팀 채팅 열기">💬<i></i></button></div>
+<script src="/static/teamchat.js" defer></script>`;
 
 // user: 로그인한 사용자, nl: 대시보드에서 작업 중인 뉴스레터
 export function page(title, body, { user = null, nl = null, active = '', wide = false, msg = '', head = '', bare = false, lang = 'ko' } = {}) {
@@ -203,7 +248,7 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <title>${h(title)}</title>${FAVICON}${head}
 <style>${CSS}</style></head><body>${nav}
 <div class="wrap${wide ? ' wide' : ''}">${user && !user.verified ? `<div class="msg"><b>${t('이메일 인증이 필요합니다.')}</b> ${t('인증 전에는 메일 발송·예약·테스트가 제한되고 구독을 받을 수 없습니다.')}
-<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${platformFooter(t, lang)}</body></html>`;
+<form method="post" action="/app/resend-verification" style="display:inline"><button class="sm">${t('인증 메일 다시 받기')}</button></form></div>` : ''}${msg ? `<div class="msg">${h(msg)}</div>` : ''}${body}</div>${platformFooter(t, lang)}${nl?.team_n > 0 ? teamChat(nl) : ''}</body></html>`;
 }
 
 // 플랫폼 공통 푸터: 언어 선택 · 요금제/개인정보/환불 링크 · 사업자 정보 (공개 뉴스레터 페이지에도 붙는다)
