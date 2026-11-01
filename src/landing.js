@@ -126,6 +126,10 @@ footer .fcp{font-size:12.5px;color:#6B7689}
 footer a:hover{color:var(--blue)}
 footer .langsw{font-size:13px;display:inline-flex;gap:14px}footer .langsw b{color:var(--navy);font-weight:600}
 html[lang=ja] body,html[lang=zh] body{word-break:normal}
+.live{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:2px 10px;border-radius:999px;background:#ECFDF3;color:#15803D;font-size:11px;font-weight:700;letter-spacing:.06em;vertical-align:1px}
+.live i{width:7px;height:7px;border-radius:50%;background:#22A05A;animation:ping 2s infinite}
+.fresh{animation:fresh 1.1s cubic-bezier(.2,.7,.2,1) both}
+@keyframes fresh{from{opacity:0;transform:translateY(-14px) scale(.98);background:#EEF3FF}to{opacity:1;transform:none}}
 /* 모션 */
 @keyframes up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
 @keyframes sweep{from{transform:scaleX(0)}to{transform:scaleX(1)}}
@@ -144,16 +148,9 @@ html[lang=ja] body,html[lang=zh] body{word-break:normal}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}html{scroll-behavior:auto}.js .rv{opacity:1;transform:none}}
 `;
 
-export function landingPage({ user, list, notes = [], courses = [], lang = 'ko', msg = '' }) {
+// 탐색·강의·커뮤니티 구역의 HTML. 첫 화면과 실시간 갱신(/home/live)이 같은 모양을 쓰도록 따로 만든다
+export function homeSections({ list, notes = [], courses = [], lang = 'ko' }) {
   const t = tr(lang);
-  const cta = user
-    ? `<div class="cta rise" style="--d:.4s"><a class="pill blue" href="/app">${t('내 뉴스레터로 이동 →')}</a></div>`
-    : `<form class="claim rise" style="--d:.4s" action="/claim" method="get" id="claim">
-<div class="in"><label for="sub" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${t('내 뉴스레터 주소')}</label>
-<input id="sub" name="sub" placeholder="my-letter" maxlength="30" autocomplete="off" autocapitalize="off" spellcheck="false" pattern="[a-z0-9][a-z0-9\\-]{2,29}" title="${h(t('영문 소문자·숫자·하이픈, 3~30자'))}"><span class="sfx">.lett.live</span></div>
-<button>${t('지금 시작하기 →')}</button></form>
-${msg ? `<div class="err" role="alert">${h(t(msg))}</div>` : ''}
-<p class="hint rise" style="--d:.5s">${t('내 뉴스레터는')} <b id="shown">my-letter.lett.live</b><span class="caret" aria-hidden="true"></span> ${t('에서 열려요. 입력한 주소는 로그인 후 자동으로 연결됩니다.')}</p>`;
   const explore = list.length
     ? `<div class="ex">${list.map((n) => `<a class="xc lift" href="${h(publicUrl(n))}"><div class="top">${n.logo ? `<img src="${h(n.logo)}" alt="">` : `<span class="lg">${h([...n.name][0] || '·')}</span>`}
 <div><b>${h(n.name)}</b><small>${h(n.owner || t('발행자'))} · ${t('구독자 {n}명 · 글 {p}편', { n: n.subs, p: n.posts })}</small></div></div><p>${h(n.description || t('아직 소개가 없습니다.'))}</p></a>`).join('')}</div>`
@@ -165,6 +162,20 @@ ${msg ? `<div class="err" role="alert">${h(t(msg))}</div>` : ''}
   const noteCards = notes.length
     ? `<div class="nts">${notes.map((n) => `<a class="nc lift" href="/posts/${n.id}"><span class="nca" style="background:hsl(${(n.user_id * 47) % 360} 55% 40%)">${h([...authorName(n)][0] || '?')}</span><div style="min-width:0"><div class="nm"><b>${h(authorName(n))}</b><small>${ago(n.created_at, t)}</small></div><p>${h(n.body.slice(0, 180))}</p><div class="ct">♥ ${n.likes} · ${t('댓글')} ${n.comments}</div></div></a>`).join('')}</div>`
     : `<div class="empty"><b style="color:var(--navy);font-size:18px">${t('아직 포스트가 없어요. 첫 글을 남겨 보세요.')}</b></div>`;
+  return { explore, courseCards, noteCards };
+}
+
+export function landingPage({ user, list, notes = [], courses = [], lang = 'ko', msg = '' }) {
+  const t = tr(lang);
+  const { explore, courseCards, noteCards } = homeSections({ list, notes, courses, lang });
+  const cta = user
+    ? `<div class="cta rise" style="--d:.4s"><a class="pill blue" href="/app">${t('내 뉴스레터로 이동 →')}</a></div>`
+    : `<form class="claim rise" style="--d:.4s" action="/claim" method="get" id="claim">
+<div class="in"><label for="sub" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${t('내 뉴스레터 주소')}</label>
+<input id="sub" name="sub" placeholder="my-letter" maxlength="30" autocomplete="off" autocapitalize="off" spellcheck="false" pattern="[a-z0-9][a-z0-9\\-]{2,29}" title="${h(t('영문 소문자·숫자·하이픈, 3~30자'))}"><span class="sfx">.lett.live</span></div>
+<button>${t('지금 시작하기 →')}</button></form>
+${msg ? `<div class="err" role="alert">${h(t(msg))}</div>` : ''}
+<p class="hint rise" style="--d:.5s">${t('내 뉴스레터는')} <b id="shown">my-letter.lett.live</b><span class="caret" aria-hidden="true"></span> ${t('에서 열려요. 입력한 주소는 로그인 후 자동으로 연결됩니다.')}</p>`;
   const words = ['에세이', '인터뷰', '큐레이션', '리뷰', '일기', '뉴스', '칼럼', '레시피', '여행기', '투자 노트', '기술 블로그', '육아 일지'];
   const feat = (n, title, body) => `<div class="f"><span class="no">${n}</span><div><h3>${t(title)}</h3><p>${t(body)}</p></div></div>`;
 
@@ -208,16 +219,16 @@ ${feat('04', '한눈에 보는 성과', '구독자 추이, 열람률, 클릭률,
 ${feat('05', '유료 구독', '월간·연간 구독을 열고 유료 전용 글을 발행하세요. 매출과 정산 내역도 한곳에서 확인합니다.')}
 ${feat('06', '쉬운 이사', 'Substack, Medium, 워드프레스 등 RSS가 있는 곳의 글을 가져오고, 기존 구독자는 CSV로 옮겨오세요.')}</div></div></section>
 
-<section id="posts"><div class="wrap"><div class="kicker">COMMUNITY</div><h2>${t('모두의 이야기를 가볍게 나눠요.')}</h2>
-<p class="sub">${t('짧은 생각을 남기고, 좋아요와 댓글로 이야기를 나눠 보세요.')}</p>${noteCards}
+<section id="posts"><div class="wrap"><div class="kicker">COMMUNITY <span class="live" title="${h(t('실시간으로 갱신돼요'))}"><i></i>LIVE</span></div><h2>${t('모두의 이야기를 가볍게 나눠요.')}</h2>
+<p class="sub">${t('짧은 생각을 남기고, 좋아요와 댓글로 이야기를 나눠 보세요.')}</p><div data-live="notes">${noteCards}</div>
 <div class="sec-cta"><a class="pill" href="/posts">${t('포스트 전체 보기 →')}</a></div></div></section>
 
-<section id="courses" class="alt"><div class="wrap"><div class="kicker">CREATE</div><h2>${t('지금 인기 있는 강의와 상품.')}</h2>
-<p class="sub">${t('크리에이터가 직접 만든 강의와 디지털 상품을 만나 보세요.')}</p>${courseCards}
+<section id="courses" class="alt"><div class="wrap"><div class="kicker">CREATE <span class="live" title="${h(t('실시간으로 갱신돼요'))}"><i></i>LIVE</span></div><h2>${t('지금 인기 있는 강의와 상품.')}</h2>
+<p class="sub">${t('크리에이터가 직접 만든 강의와 디지털 상품을 만나 보세요.')}</p><div data-live="courses">${courseCards}</div>
 <div class="sec-cta"><a class="pill" href="/create">${t('내 강의 만들기 →')}</a></div></div></section>
 
-<section id="explore" style="padding-top:0"><div class="wrap"><div class="kicker">EXPLORE</div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
-<p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p>${explore}</div></section>
+<section id="explore" style="padding-top:0"><div class="wrap"><div class="kicker">EXPLORE <span class="live" title="${h(t('실시간으로 갱신돼요'))}"><i></i>LIVE</span></div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
+<p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p><div data-live="explore">${explore}</div></div></section>
 
 <section id="pricing" class="alt"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
 <p class="sub" style="margin-bottom:0">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund" style="text-decoration:underline">${t('환불 정책')}</a></p>
@@ -241,6 +252,16 @@ var els=document.querySelectorAll('.kicker,section h2,.sub,.step,.f,.xc,.cc,.nc,
 if(!rm&&'IntersectionObserver' in window){document.documentElement.classList.add('js');
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;var el=e.target;el.classList.add('in');io.unobserve(el);setTimeout(function(){el.classList.remove('rv','in');el.style.removeProperty('--d')},1400)})},{threshold:.15,rootMargin:'0px 0px -40px 0px'});
 els.forEach(function(el){el.classList.add('rv');io.observe(el)})}
+// 실시간 갱신: 10초마다 탐색·강의·커뮤니티를 다시 불러와 바뀐 부분만 교체한다 (화면이 보일 때만)
+var live=document.querySelectorAll('[data-live]'),busy=false;
+function tick(){if(document.hidden||busy||!live.length)return;busy=true;
+fetch('/home/live',{headers:{Accept:'application/json'},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(!d)return;
+live.forEach(function(box){var html=d[box.dataset.live];if(typeof html!=='string'||html===box.dataset.html)return;
+var first=box.dataset.html===undefined;box.dataset.html=html;if(first&&box.innerHTML.trim()===html.trim())return;
+var old={};[].forEach.call(box.querySelectorAll('a[href]'),function(a){old[a.getAttribute('href')]=1});
+box.innerHTML=html;if(rm)return;
+[].forEach.call(box.querySelectorAll('a[href]'),function(a){if(!old[a.getAttribute('href')]){a.classList.add('fresh')}})})}).catch(function(){}).then(function(){busy=false})}
+setInterval(tick,10000);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});
 })()</script>
 </body></html>`;
 }

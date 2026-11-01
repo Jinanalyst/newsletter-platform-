@@ -4,7 +4,7 @@ import { db, now, baseUrl, isPaid, hasPaid, publicUrl } from './db.js';
 import { enrollSubscriber } from './send.js';
 import { sbEnabled } from './supabase.js';
 import { recordView } from './analytics.js';
-import { landingPage } from './landing.js';
+import { landingPage, homeSections } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
 import { renderPost, h, personalize } from './render.js';
@@ -24,7 +24,7 @@ const note = (m) => '?m=' + encodeURIComponent(m);
 const googleOn = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
 // ---------- 플랫폼 홈 ----------
-pub.get('/', async (req, res) => {
+const homeData = async () => {
   const list = await db.prepare(`SELECT n.*, u.name AS owner,
       (SELECT COUNT(*) FROM subscribers s WHERE s.newsletter_id=n.id AND s.status='active') AS subs,
       (SELECT COUNT(*) FROM posts p WHERE p.newsletter_id=n.id AND p.status='sent') AS posts
@@ -33,7 +33,15 @@ pub.get('/', async (req, res) => {
   // 인기 강의·상품: 아직 판매 집계가 없어 최근 게시순으로 보여준다 (결제 연동 후 판매량순으로 교체)
   const courses = await db.prepare(`SELECT c.id,c.kind,c.title,c.thumbnail,c.pricing,c.price,u.name AS author FROM courses c JOIN users u ON u.id=c.owner_id
     WHERE c.status='published' ORDER BY c.id DESC LIMIT 6`).all();
-  res.send(landingPage({ user: req.user, list, notes, courses, lang: req.lang, msg: String(req.query.m || '').slice(0, 200) }));
+  return { list, notes, courses };
+};
+pub.get('/', async (req, res) => {
+  res.send(landingPage({ user: req.user, ...(await homeData()), lang: req.lang, msg: String(req.query.m || '').slice(0, 200) }));
+});
+// 홈의 탐색·강의·커뮤니티 구역을 실시간으로 갱신하기 위한 조각 (서버리스에서도 동작하도록 웹소켓 대신 주기적으로 불러간다)
+pub.get('/home/live', async (req, res) => {
+  const { explore, courseCards, noteCards } = homeSections({ ...(await homeData()), lang: req.lang });
+  res.set('Cache-Control', 'no-store').json({ explore, courses: courseCards, notes: noteCards });
 });
 
 // ---------- 회원: 이메일 가입 / 로그인 / 소셜 ----------
