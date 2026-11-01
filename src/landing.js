@@ -109,6 +109,8 @@ h2{font-size:clamp(30px,4vw,46px);line-height:1.25;font-weight:800;letter-spacin
 .cb{padding:16px 18px 18px;display:flex;flex-direction:column;gap:3px}.cb b{font-size:16.5px;line-height:1.4;letter-spacing:-.02em}
 .cb small{color:var(--mute);font-size:13.5px}.cp{margin-top:8px;font-weight:800;font-size:18px;letter-spacing:-.03em}.cp i{font-style:normal;font-weight:500;color:var(--mute);font-size:14px}
 .sec-cta{margin-top:28px}
+#pricing .kicker,#pricing h2,#pricing .sub,#pricing .cmph{text-align:center}
+#pricing .sub,#pricing .pls,#pricing .cmpw{margin-left:auto;margin-right:auto}
 /* CTA 밴드 */
 .band{padding:112px 0}
 .bandin{background:var(--navy);color:#fff;border-radius:32px;padding:clamp(48px,8vw,88px) 32px;text-align:center}
@@ -227,7 +229,7 @@ ${feat('06', '쉬운 이사', 'Substack, Medium, 워드프레스 등 RSS가 있�
 <p class="sub">${t('크리에이터가 직접 만든 강의와 디지털 상품을 만나 보세요.')}</p><div data-live="courses">${courseCards}</div>
 <div class="sec-cta"><a class="pill" href="/create">${t('내 강의 만들기 →')}</a></div></div></section>
 
-<section id="explore" style="padding-top:0"><div class="wrap"><div class="kicker">EXPLORE <span class="live" title="${h(t('실시간으로 갱신돼요'))}"><i></i>LIVE</span></div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
+<section id="explore"><div class="wrap"><div class="kicker">EXPLORE <span class="live" title="${h(t('실시간으로 갱신돼요'))}"><i></i>LIVE</span></div><h2>${t('지금 펼쳐지고 있는 이야기들.')}</h2>
 <p class="sub">${t('마음에 드는 뉴스레터를 구독해 보세요.')}</p><div data-live="explore">${explore}</div></div></section>
 
 <section id="pricing" class="alt"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
