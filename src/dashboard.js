@@ -15,6 +15,7 @@ import { cleanLayout } from './layout.js';
 import { viewStats, postViewStats, trafficStats } from './analytics.js';
 import { findNewsletter, OWNER_ONLY } from './access.js';
 import { settingsTabs } from './workspace.js';
+import { claimedSub, claimedHost, clearClaim } from './claim.js';
 
 export const dash = Router();
 dash.use('/app', requireUser);
@@ -96,7 +97,7 @@ dash.get('/app/new/check', async (req, res) => {
   const slug = String(req.query.slug || '').toLowerCase();
   res.json({ ok: /^[a-z0-9][a-z0-9-]{2,29}$/.test(slug) && !(await db.prepare('SELECT 1 FROM newsletters WHERE slug=?').get(slug)) });
 });
-dash.get('/app/new', (req, res) => res.page('새 뉴스레터', `<style>
+dash.get('/app/new', async (req, res) => { const claimed = await claimedSub(req); res.page('새 뉴스레터', `<style>
 .wz{max-width:560px;margin:0 auto}.wzbar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:6px 0 28px}.wzbar i{display:block;height:100%;width:0;background:var(--blue);transition:width .35s}
 .wrow{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
 .wq{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}.wq b{font-size:26px;line-height:1.35;letter-spacing:-.03em}.wq .mute{font-size:14.5px}.wstep{margin:0 0 8px;font-size:13px}
@@ -113,7 +114,7 @@ dash.get('/app/new', (req, res) => res.page('새 뉴스레터', `<style>
 <div class="wz"><p class="mute" style="margin:0"><a href="/app">← 내 뉴스레터</a></p><h1 style="margin-top:10px">새 뉴스레터 만들기</h1>
 <div class="wzbar"><i id="wzp"></i></div><div id="wzchat"></div><div id="wzcur"></div>
 <form id="wzform" method="post" action="/app/new" hidden></form><template id="snsTpl">${snsFields()}</template></div>
-<script src="/static/newnl.js?v=1"></script>`, { active: 'app', msg: req.query.m }));
+${claimed ? `<script>window.CLAIM_SUB=${JSON.stringify(claimed)}</script>` : ''}<script src="/static/newnl.js?v=2"></script>`, { active: 'app', msg: req.query.m }); });
 dash.post('/app/new', async (req, res) => {
   const b = req.body;
   const slug = String(b.slug || '').toLowerCase();
@@ -123,7 +124,10 @@ dash.post('/app/new', async (req, res) => {
   const id = Number((await db.prepare('INSERT INTO newsletters(owner_id,slug,name,description,logo,categories,sns,created_at) VALUES(?,?,?,?,?,?,?,?)')
     .run(req.user.id, slug, name.slice(0, 60), String(b.description || '').slice(0, 300), isOwnImageUrl(b.logo) ? b.logo : '', cleanTags(b.categories), parseSns(b), now())).lastInsertRowid);
   await seedNewsletter(id, name.slice(0, 60)); // 환영 메일(켜짐) + 첫 글 초안을 기본으로 만들어 둔다
-  res.redirect(`/app/n/${id}` + note('뉴스레터를 만들었습니다. 아래 체크리스트를 따라 시작해 보세요.'));
+  // 홈에서 입력해 둔 <이름>.lett.live 주소가 있으면 이 뉴스레터에 자동으로 지정한다
+  const sub = await claimedSub(req);
+  if (sub) { await db.prepare('UPDATE newsletters SET subdomain=? WHERE id=?').run(sub, id); clearClaim(res); }
+  res.redirect(`/app/n/${id}` + note(sub ? `뉴스레터를 만들었습니다. ${claimedHost(sub)} 주소가 연결되었어요. 아래 체크리스트를 따라 시작해 보세요.` : '뉴스레터를 만들었습니다. 아래 체크리스트를 따라 시작해 보세요.'));
 });
 
 // ---------- 프로필 ----------

@@ -10,10 +10,10 @@ import { findNewsletter } from './access.js';
 
 export const workspace = Router();
 
-const PLATFORM_DOMAIN = () => (process.env.PLATFORM_DOMAIN || 'lett.live').toLowerCase();
+export const PLATFORM_DOMAIN = () => (process.env.PLATFORM_DOMAIN || 'lett.live').toLowerCase();
 const MAX_TEAM = 5, MAX_KEYS = 5;
-const RESERVED = new Set(['www', 'app', 'api', 'admin', 'mail', 'smtp', 'ftp', 'cname', 'static', 'cdn', 'blog', 'help', 'support']);
-const SUB_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;
+export const RESERVED = new Set(['www', 'app', 'api', 'admin', 'mail', 'smtp', 'ftp', 'cname', 'static', 'cdn', 'blog', 'help', 'support']);
+export const SUB_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;
 const DOMAIN_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const sha = (s) => createHash('sha256').update(s).digest('hex');

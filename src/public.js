@@ -14,6 +14,7 @@ import { NOTE_SELECT } from './feed.js';
 import { snsLinks } from './sns.js';
 import { readLayout, applyOrder } from './layout.js';
 import { priceLabel } from './create.js';
+import { claimedSub, claimedHost } from './claim.js';
 import { hashPw, checkPw, login, cookie, tooManyTries, limitHits, requireUser, createToken, checkToken, sendVerification, sendReset, cooldown } from './auth.js';
 
 export const pub = Router();
@@ -32,7 +33,7 @@ pub.get('/', async (req, res) => {
   // 인기 강의·상품: 아직 판매 집계가 없어 최근 게시순으로 보여준다 (결제 연동 후 판매량순으로 교체)
   const courses = await db.prepare(`SELECT c.id,c.kind,c.title,c.thumbnail,c.pricing,c.price,u.name AS author FROM courses c JOIN users u ON u.id=c.owner_id
     WHERE c.status='published' ORDER BY c.id DESC LIMIT 6`).all();
-  res.send(landingPage({ user: req.user, list, notes, courses, lang: req.lang }));
+  res.send(landingPage({ user: req.user, list, notes, courses, lang: req.lang, msg: String(req.query.m || '').slice(0, 200) }));
 });
 
 // ---------- 회원: 이메일 가입 / 로그인 / 소셜 ----------
@@ -48,8 +49,10 @@ ${signup ? `<label>${t('이름')}</label><input name="name" required maxlength="
 ${googleOn() || sbEnabled() ? `<p><a class="btn" href="/auth/google">${t('Google로 계속하기')}</a></p>` : `<p class="mute">${t('Google 로그인은 .env에 GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET을 설정하면 활성화됩니다.')}</p>`}
 <p class="mute">${signup ? `${t('이미 계정이 있나요?')} <a href="/login">${t('로그인')}</a>` : `${t('계정이 없나요?')} <a href="/signup">${t('가입하기')}</a> · <a href="/forgot">${t('비밀번호를 잊으셨나요?')}</a>`}</p>`, { msg });
 };
-pub.get('/signup', (req, res) => (req.user ? res.redirect('/app') : authForm('signup', req.query.m, req, res)));
-pub.get('/login', (req, res) => (req.user ? res.redirect('/app') : authForm('login', req.query.m, req, res)));
+// 홈에서 주소를 입력하고 넘어온 경우, 로그인·가입 화면에 어떤 주소가 확보 중인지 알려 준다
+const claimNote = async (req) => { const sub = await claimedSub(req); return sub ? req.t('{h} 주소를 확보했어요. 로그인하거나 가입하면 이 주소로 뉴스레터를 만들어 드려요.', { h: claimedHost(sub) }) : ''; };
+pub.get('/signup', async (req, res) => (req.user ? res.redirect('/app') : authForm('signup', req.query.m || await claimNote(req), req, res)));
+pub.get('/login', async (req, res) => (req.user ? res.redirect('/app') : authForm('login', req.query.m || await claimNote(req), req, res)));
 
 pub.post('/signup', async (req, res) => {
   if (await tooManyTries(req.ip, true)) return res.status(429).send(req.t('잠시 후 다시 시도하세요.'));

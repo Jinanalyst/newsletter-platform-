@@ -17,6 +17,7 @@ import { page } from './views.js';
 import { langMiddleware, langRoute, tr } from './i18n.js';
 import { startScheduler, tick } from './send.js';
 import { workspace, api, domainRouter } from './workspace.js';
+import { claim } from './claim.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? 1 : 'loopback');
@@ -55,6 +56,7 @@ app.use((req, res, next) => {
 });
 app.use(sbRouter); // SUPABASE_URL 설정 시 가입·로그인·재설정을 Supabase가 처리 (미설정이면 아래 기본 라우트로 통과)
 app.use(domainRouter); // <이름>.lett.live · 인증된 커스텀 도메인 → 해당 뉴스레터 공개 페이지
+app.use(claim); // 홈에서 입력한 주소(.lett.live)를 로그인·가입 후 자동으로 지정
 app.use(pub);
 app.use(feed); // 커뮤니티 포스트(/posts)
 app.use(legal); // 개인정보처리방침(/privacy) · 환불 정책(/refund)

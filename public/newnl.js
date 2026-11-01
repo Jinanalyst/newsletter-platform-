@@ -67,7 +67,8 @@
     },
     slug(body, next, fail) {
       const i = textInput(body, next, 'slug', { max: 30, ph: 'my-letter' });
-      if (!A.slug) i.value = A.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30); // 영문 이름이면 주소를 미리 제안
+      if (!A.slug && window.CLAIM_SUB) i.value = window.CLAIM_SUB; // 홈에서 정해 둔 주소를 그대로 제안
+      else if (!A.slug) i.value = A.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30); // 영문 이름이면 주소를 미리 제안
       const row = el('div', 'wslug'); row.append(el('span', 'mute', location.host + '/n/')); i.parentNode.insertBefore(row, i); row.appendChild(i);
       const st = el('p', 'mute wst'); body.appendChild(st);
       const check = () => {
