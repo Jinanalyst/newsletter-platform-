@@ -80,6 +80,17 @@ export async function viewStats(nlId, days = 30) {
   return { views: tot.views, visitors: tot.visitors, subViews: tot.subv, daily, top, sources };
 }
 
+// 날짜별 그날 끝 기준 구독자 수(확인 대기 제외, 해지는 해지일부터 빠짐)
+export async function subGrowth(nlId, days = 30) {
+  const rows = await db.prepare("SELECT substr(created_at,1,10) c, substr(unsub_at,1,10) u FROM subscribers WHERE newsletter_id=? AND status!='pending'").all(nlId);
+  const daily = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * DAY).toISOString().slice(0, 10);
+    daily.push([d, rows.filter((r) => r.c <= d && !(r.u && r.u <= d)).length]);
+  }
+  return daily;
+}
+
 export async function postViewStats(postId) {
   return await db.prepare(`SELECT COUNT(*) views, COUNT(DISTINCT vid) visitors, ${SUBV} subv FROM page_views WHERE post_id=?`).get(postId);
 }

@@ -81,6 +81,22 @@ tr:last-child td{border-bottom:0}
 .msg form{margin-left:6px}
 .bars{display:flex;align-items:flex-end;gap:3px;height:64px}
 .bars i{flex:1;background:var(--blue);min-height:2px;border-radius:3px 3px 0 0}
+/* 방문 막대 + 구독자 라인 겹친 차트 */
+.combo-lg{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px;color:var(--mute);margin-bottom:14px}
+.combo-lg b{color:var(--ink);font-weight:600}
+.combo-lg .k{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--blue);margin-right:6px;vertical-align:-1px}
+.combo-lg .k.ln{height:3px;width:14px;border-radius:2px;background:#10B981;vertical-align:3px}
+.combo{display:grid;grid-template-columns:auto 1fr auto;gap:0 10px;font-size:12px;color:var(--mute)}
+.combo .ax{display:flex;flex-direction:column;justify-content:space-between;height:240px;text-align:right;line-height:1}
+.combo .ax.r{text-align:left;color:#10B981}
+.combo .plot{position:relative;height:240px;border-bottom:1px solid var(--line);background:repeating-linear-gradient(to bottom,var(--line) 0 1px,transparent 1px 25%)}
+.combo .cols{position:absolute;inset:0;display:flex;gap:3px}
+.combo .cols span{flex:1;display:flex;align-items:flex-end}
+.combo .cols span:hover{background:var(--soft)}
+.combo .cols i{flex:1;background:var(--blue);min-height:2px;border-radius:3px 3px 0 0;opacity:.85}
+.combo svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.combo .dot{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--card);border:2px solid #10B981;transform:translate(-50%,50%);pointer-events:none}
+.combo .dates{grid-column:2;display:flex;justify-content:space-between;margin-top:6px}
 .tags label{display:inline-flex;gap:6px;align-items:center;margin:4px 14px 4px 0;color:var(--ink);font-size:14px}
 .editor{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:28px}
 @media(max-width:860px){.editor{grid-template-columns:1fr}.wrap{padding:36px 18px 72px}nav{padding:14px 18px}}

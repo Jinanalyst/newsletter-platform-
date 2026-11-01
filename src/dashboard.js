@@ -12,7 +12,7 @@ import { page, fmt, pct } from './views.js';
 import { snsFields, parseSns } from './sns.js';
 import { parseSubscribers } from './csv.js';
 import { cleanLayout } from './layout.js';
-import { viewStats, postViewStats, trafficStats } from './analytics.js';
+import { viewStats, postViewStats, trafficStats, subGrowth } from './analytics.js';
 import { findNewsletter, OWNER_ONLY } from './access.js';
 import { settingsTabs } from './workspace.js';
 import { claimedSub, claimedHost, clearClaim } from './claim.js';
@@ -200,17 +200,38 @@ const getPost = async (req) => await db.prepare('SELECT * FROM posts WHERE id=? 
 
 // 유입 분석: 방문자가 어떤 경로(검색·SNS·블로그·메일·직접)로 왔는지
 const CH_COLOR = { '검색': '#3B82F6', 'SNS': '#EC4899', '블로그·커뮤니티': '#10B981', '메일': '#F59E0B', '직접': '#64748B', '기타 웹사이트': '#8B5CF6' };
+
+// 일별 방문(막대, 왼쪽 축)과 구독자 수(라인, 오른쪽 축)를 한 차트에
+function comboChart(visits, subs) {
+  const n = visits.length, vmax = Math.max(1, ...visits.map((d) => d[1]));
+  const sv = subs.map((d) => d[1]), smin = Math.min(...sv), smax = Math.max(...sv);
+  const pad = Math.max(1, Math.ceil((smax - smin) * 0.15));
+  const lo = Math.max(0, smin - pad), hi = smax + pad;
+  const x = (i) => ((i + 0.5) / n) * 100, y = (v) => ((v - lo) / (hi - lo)) * 100;
+  const pts = sv.map((v, i) => `${x(i).toFixed(2)},${(100 - y(v)).toFixed(2)}`).join(' ');
+  const first = sv[0], last = sv[n - 1], diff = last - first;
+  const rate = first ? `${diff >= 0 ? '+' : ''}${Math.round((diff / first) * 1000) / 10}%` : (last ? '신규' : '0%');
+  const md = (d) => d.slice(5).replace('-', '.');
+  return `<div class="combo-lg"><span><i class="k"></i>일별 방문</span><span><i class="k ln"></i>구독자 수 <b>${last}명</b></span>
+<span>기간 증가율 <b style="color:${diff < 0 ? 'var(--bad)' : '#10B981'}">${rate}</b> (${diff >= 0 ? '+' : ''}${diff}명)</span></div>
+<div class="combo"><div class="ax"><span>${vmax}</span><span>${Math.round(vmax / 2)}</span><span>0</span></div>
+<div class="plot"><div class="cols">${visits.map(([d, v], i) => `<span title="${d}\n방문 ${v}회 · 구독자 ${sv[i]}명"><i style="height:${(v / vmax) * 100}%"></i></span>`).join('')}</div>
+<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="${x(0).toFixed(2)},100 ${pts} ${x(n - 1).toFixed(2)},100" fill="#10B981" fill-opacity=".08"/>
+<polyline points="${pts}" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
+${n <= 31 ? sv.map((v, i) => `<i class="dot" style="left:${x(i)}%;bottom:${y(v)}%"></i>`).join('') : ''}</div>
+<div class="ax r"><span>${hi}</span><span>${Math.round((hi + lo) / 2)}</span><span>${lo}</span></div>
+<div class="dates"><span>${md(visits[0][0])}</span><span>${md(visits[n >> 1][0])}</span><span>${md(visits[n - 1][0])}</span></div></div>`;
+}
 dash.get('/app/n/:nid/traffic', async (req, res) => {
   const nl = req.nl, days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
-  const [ts, vs] = await Promise.all([trafficStats(nl.id, days), viewStats(nl.id, days)]);
+  const [ts, vs, sg] = await Promise.all([trafficStats(nl.id, days), viewStats(nl.id, days), subGrowth(nl.id, days)]);
   const p = (n) => (ts.total ? Math.round((n / ts.total) * 1000) / 10 : 0);
-  const vmax = Math.max(1, ...vs.daily.map((d) => d[1]));
   const bar = (n, color) => `<div style="height:8px;border-radius:4px;background:#EEF2F6;min-width:120px"><div style="height:8px;border-radius:4px;background:${color};width:${p(n)}%"></div></div>`;
   res.page('유입 분석', `<div class="row"><h1 class="grow">유입 분석</h1>${[7, 30, 90].map((d) => `<a class="btn sm${d === days ? ' primary' : ''}" href="?days=${d}">${d}일</a>`).join('')}</div>
 <p class="mute">최근 ${days}일 동안 공개 페이지·글을 연 방문이 어떤 경로로 들어왔는지 보여줘요.</p>
 <div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자</div>
 ${[...ts.channels].sort((a, b) => b.n - a.n).filter((c) => c.n).slice(0, 2).map((c) => `<div class="stat"><b>${p(c.n)}%</b>${c.name}</div>`).join('')}</div>
-<h2>일별 방문</h2><div class="card"><div class="bars">${vs.daily.map(([d, n]) => `<i title="${d}: ${n}회" style="height:${Math.max(3, (n / vmax) * 100)}%"></i>`).join('')}</div></div>
+<h2>일별 방문 · 구독자 추이</h2><div class="card">${comboChart(vs.daily, sg)}</div>
 <h2>유입 채널</h2><div class="card">${ts.total ? `<table>${ts.channels.map((c) => `<tr><td style="white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CH_COLOR[c.name]};margin-right:8px"></span>${c.name}</td><td style="width:50%">${bar(c.n, CH_COLOR[c.name])}</td><td style="text-align:right;white-space:nowrap">${c.n}회 <span class="mute">${p(c.n)}%</span></td></tr>`).join('')}</table>` : '<p class="mute" style="margin:0">아직 조회 기록이 없습니다.</p>'}</div>
 <div class="row" style="align-items:flex-start">
 <div class="grow card" style="margin:0"><b>유입 경로 순위</b><table>${ts.sources.map((s, i) => `<tr><td class="mute">${i + 1}</td><td>${h(s.name)} <span class="mute">${s.channel}</span></td><td style="text-align:right;white-space:nowrap">${s.n}회 <span class="mute">${p(s.n)}%</span></td></tr>`).join('') || '<tr><td class="mute">기록이 없습니다.</td></tr>'}</table></div>
