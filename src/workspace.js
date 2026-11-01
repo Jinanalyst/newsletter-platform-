@@ -4,8 +4,7 @@ import express from 'express';
 import dns from 'node:dns/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { db, now, baseUrl, publicHost } from './db.js';
-import { requireUser, login, createToken, checkToken } from './auth.js';
-import { h } from './render.js';
+import { requireUser, login, createToken, checkToken } from './auth.js';import { h } from './render.js';
 import { sendMail } from './mail.js';
 import { findNewsletter } from './access.js';
 
@@ -234,7 +233,7 @@ const inviteLink = (t) => `${baseUrl()}/team/accept/${t}`;
 workspace.get(S + '/team', async (req, res) => {
   const list = await db.prepare(`SELECT m.*, u.name AS uname FROM team_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.newsletter_id=? ORDER BY m.id`).all(req.nl.id);
   shell(req, res, 'team', '팀원', `
-<div class="card"><b>팀원 초대</b><p class="mute">초대한 팀원은 글 작성·발송, 구독자·자동화 관리 등 운영 화면을 쓸 수 있어요. 설정(도메인·API·팀)과 삭제는 소유자만 할 수 있습니다. 소유자 외 최대 ${MAX_TEAM}명.</p>
+<div class="card"><b>팀원 초대</b><p class="mute">초대하면 가입하지 않은 이메일도 계정이 자동으로 만들어지고 초대 메일로 비밀번호를 정할 수 있어요. 팀원은 같은 뉴스레터에서 글 작성·발송, 구독자·자동화 관리 등 운영 화면을 쓸 수 있어요. 설정(도메인·API·팀)과 삭제는 소유자만 할 수 있습니다. 소유자 외 최대 ${MAX_TEAM}명.</p>
 <form method="post" action="${here(req, 'team/invite')}" class="row nowrap"><input type="email" name="email" placeholder="초대할 이메일" required style="max-width:320px"><button class="primary">초대 보내기</button></form></div>
 <div class="card"><b>팀원 (${list.length}/${MAX_TEAM})</b>
 ${list.length ? `<table style="margin-top:10px"><tbody>${list.map((m) => `<tr><td>${h(m.email)}${m.uname ? ` <span class="mute">${h(m.uname)}</span>` : ''}</td>
@@ -250,14 +249,23 @@ workspace.post(S + '/team/invite', async (req, res) => {
   if (await db.prepare('SELECT 1 FROM team_members WHERE newsletter_id=? AND email=?').get(req.nl.id, email)) return to('이미 초대한 이메일입니다.');
   if ((await db.prepare('SELECT COUNT(*) n FROM team_members WHERE newsletter_id=?').get(req.nl.id)).n >= MAX_TEAM) return to(`팀원은 최대 ${MAX_TEAM}명까지 초대할 수 있습니다.`);
   const token = randomBytes(24).toString('base64url');
-  await db.prepare('INSERT INTO team_members(newsletter_id,email,token,created_at) VALUES(?,?,?,?)').run(req.nl.id, email, token, now());
-  const link = inviteLink(token);
+  // 이미 가입한 이메일이면 그 계정에, 아니면 계정을 자동으로 만들어 바로 팀원(참여 중)으로 등록한다.
+  // 새 계정은 메일의 링크로 비밀번호를 정하면 바로 쓸 수 있고(이메일 인증도 함께 완료), 같은 뉴스레터를 함께 운영한다
+  let u = await db.prepare('SELECT id, pw_hash, google_id, supabase_id FROM users WHERE email=?').get(email);
+  const isNew = !u;
+  if (!u) u = { id: Number((await db.prepare('INSERT INTO users(email,name,created_at) VALUES(?,?,?)').run(email, '', now())).lastInsertRowid) };
+  await db.prepare("INSERT INTO team_members(newsletter_id,email,user_id,status,token,created_at) VALUES(?,?,?,'active',?,?)").run(req.nl.id, email, u.id, token, now());
+  const setPw = isNew || !(u.pw_hash || u.google_id || u.supabase_id);
+  const link = setPw ? `${baseUrl()}/reset/${await createToken(u.id, 'reset', 7 * 864e5)}` : `${baseUrl()}/app/n/${req.nl.id}`;
+  const who = h(req.user.name || req.user.email);
   try {
-    await sendMail({ to: email, subject: `[lett.] ${req.nl.name} 팀 초대`, fromName: 'lett.',
-      html: `<p>${h(req.user.name || req.user.email)}님이 <b>${h(req.nl.name)}</b> 뉴스레터 팀에 초대했어요.</p><p><a href="${link}">초대 수락하기</a></p><p>이 이메일(${h(email)})로 가입·로그인한 계정에서만 수락할 수 있습니다.</p>`,
-      text: `${req.nl.name} 팀 초대: ${link}` });
-    to('초대 메일을 보냈습니다.');
-  } catch (e) { console.error('초대 메일 실패', e.message); to('초대를 만들었지만 메일 발송에 실패했어요. 아래 초대 링크를 직접 전달해 주세요.'); }
+    await sendMail({ to: email, subject: `[lett.] ${req.nl.name} 팀에 초대되었어요`, fromName: 'lett.',
+      html: setPw
+        ? `<p>${who}님이 <b>${h(req.nl.name)}</b> 뉴스레터 팀에 초대했어요. 이 이메일(${h(email)})로 계정이 만들어졌고, 이미 팀원으로 등록되어 있습니다.</p><p>아래 링크에서 비밀번호를 정하면 바로 함께 운영할 수 있어요. (7일 유효)</p><p><a href="${link}">비밀번호 정하고 시작하기</a></p>`
+        : `<p>${who}님이 <b>${h(req.nl.name)}</b> 뉴스레터 팀에 초대했어요. 이미 팀원으로 등록되어 로그인하면 바로 운영 화면을 쓸 수 있습니다.</p><p><a href="${link}">뉴스레터 열기</a></p>`,
+      text: `${req.nl.name} 팀에 초대되었어요: ${link}` });
+    to('초대 메일을 보냈습니다. 상대방은 바로 팀원으로 등록되었어요.');
+  } catch (e) { console.error('초대 메일 실패', e.message); to('팀원으로 등록했지만 메일 발송에 실패했어요. 상대방이 로그인 화면의 비밀번호 찾기로 비밀번호를 정할 수 있습니다.'); }
 });
 workspace.post(S + '/team/:mid/remove', async (req, res) => {
   await db.prepare('DELETE FROM team_members WHERE id=? AND newsletter_id=?').run(req.params.mid, req.nl.id);
