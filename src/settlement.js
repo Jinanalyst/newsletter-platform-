@@ -1,6 +1,6 @@
 // 통합 정산: 뉴스레터(유료 구독)와 크리에이트 강의·상품의 수익을 한곳에서 보고, 정산 계좌를 등록하고, 정산을 신청한다.
 //  - 수익원: payments(뉴스레터 유료 구독) + course_sales(강의·상품 결제, 결제 연동 후 recordCourseSale 로 기록)
-//  - Stripe Connect 로 자동 정산되는 뉴스레터는 통계에는 보이지만 정산 신청 가능 금액에는 넣지 않는다 (이미 지급됨)
+//  - Stripe Connect 로 자동 정산되는 뉴스레터는 통계에는 보이지만 정산 신청 가능 금액에는 넣지 않는다 (이미 지급됨). 페이앱 결제는 플랫폼 계정으로 들어오므로 항상 넣는다
 //  - 정산 신청은 운영자가 /admin/payouts 에서 입금 후 "지급 완료"로 처리한다 (ADMIN_EMAILS 에 등록된 인증 계정)
 import { Router } from 'express';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
@@ -32,7 +32,8 @@ const unseal = (s) => { try { const [iv, tag, enc] = String(s).split('.').map((x
 
 // ---------- 집계 ----------
 async function summary(uid) {
-  const nls = await db.prepare(`SELECT n.id, n.name, n.stripe_account, COUNT(p.id) c, COALESCE(SUM(p.amount),0) g, COALESCE(SUM(p.fee),0) f
+  const nls = await db.prepare(`SELECT n.id, n.name, n.stripe_account, COUNT(p.id) c, COALESCE(SUM(p.amount),0) g, COALESCE(SUM(p.fee),0) f,
+    COALESCE(SUM(CASE WHEN p.invoice_id LIKE 'payapp:%' THEN p.amount-p.fee ELSE 0 END),0) pn
     FROM newsletters n LEFT JOIN payments p ON p.newsletter_id=n.id WHERE n.owner_id=? GROUP BY n.id, n.name, n.stripe_account ORDER BY n.id`).all(uid);
   const crs = await db.prepare(`SELECT c.id, c.title, c.kind, COUNT(s.id) c, COALESCE(SUM(s.amount),0) g, COALESCE(SUM(s.fee),0) f
     FROM courses c LEFT JOIN course_sales s ON s.course_id=c.id WHERE c.owner_id=? GROUP BY c.id, c.title, c.kind ORDER BY c.id`).all(uid);
@@ -51,7 +52,7 @@ async function summary(uid) {
   const series = months.map((m) => ({ m, nl: mNl.find((r) => r.m === m)?.net || 0, cr: mCr.find((r) => r.m === m)?.net || 0 }));
 
   const net = (r) => r.g - r.f;
-  const manualNet = nls.filter((n) => !n.stripe_account).reduce((a, n) => a + net(n), 0) + crs.reduce((a, c) => a + net(c), 0);
+  const manualNet = nls.reduce((a, n) => a + (n.stripe_account ? n.pn : net(n)), 0) + crs.reduce((a, c) => a + net(c), 0);
   const totalNet = nls.reduce((a, n) => a + net(n), 0) + crs.reduce((a, c) => a + net(c), 0);
   const po = await db.prepare(`SELECT COALESCE(SUM(CASE WHEN status IN ('requested','paid') THEN amount ELSE 0 END),0) used,
     COALESCE(SUM(CASE WHEN status='requested' THEN amount ELSE 0 END),0) pending, COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END),0) paid FROM payouts WHERE user_id=?`).get(uid);

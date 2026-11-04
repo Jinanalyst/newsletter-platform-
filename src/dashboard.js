@@ -6,6 +6,7 @@ import { db, now, isPaid, dailySendLimit, sentLast24h, cleanTags } from './db.js
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
 import { smtpConfigured } from './mail.js';
+import { cancelRebill, cancelNewsletterRebills } from './payapp.js';
 import { requireUser } from './auth.js';
 import { seedNewsletter } from './seed.js';
 import { page, fmt, pct } from './views.js';
@@ -277,7 +278,7 @@ dash.get('/app/n/:nid/subscribers', async (req, res) => {
 <button>검색</button><a class="btn" href="/app/n/${nl.id}/subscribers/export.csv">CSV 내보내기</a></form>
 <div class="card"><table><tr><th>이메일</th><th>이름</th><th>상태</th><th>등급</th><th>가입</th><th></th></tr>
 ${rows.slice(0, 500).map((s) => `<tr><td>${h(s.email)}</td><td>${h(s.name)}</td><td><span class="badge ${s.status}">${s.status}</span></td>
-<td>${isPaid(s) ? `<span class="badge active">유료${s.stripe_sub ? '' : '(지정)'}</span>` : '무료'}
+<td>${isPaid(s) ? `<span class="badge active">유료${s.stripe_sub || s.plan ? '' : '(지정)'}</span>` : '무료'}
 <form method="post" action="/app/n/${nl.id}/subscribers/${s.id}/tier" style="display:inline"><button class="sm" title="결제 없이 유료 혜택을 주거나 회수합니다">${isPaid(s) ? '해제' : '유료 지정'}</button></form></td>
 <td class="mute">${fmt(s.created_at)}</td><td><form method="post" action="/app/n/${nl.id}/subscribers/${s.id}/delete" style="margin:0" onsubmit="return confirm('삭제할까요?')"><button class="sm danger">삭제</button></form></td></tr>`).join('')}</table>
 ${rows.length > 500 ? '<p class="mute">상위 500명만 표시됩니다. 검색으로 좁혀보세요.</p>' : ''}</div>
@@ -325,10 +326,16 @@ dash.post('/app/n/:nid/subscribers/:id/tier', async (req, res) => {
   const s = await db.prepare('SELECT * FROM subscribers WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id);
   let m = '변경했습니다.';
   if (s && isPaid(s) && s.stripe_sub) m = '결제 중인 구독자는 Stripe에서 해지해야 합니다.';
+  else if (s && isPaid(s) && s.payapp_rebill_no) m = '자동 결제 중인 구독자는 먼저 자동 결제를 해지해야 합니다.';
   else if (s) await db.prepare('UPDATE subscribers SET tier=?, paid_until=NULL, plan=? WHERE id=?').run(isPaid(s) ? 'free' : 'paid', '', s.id);
   back(res, `/app/n/${req.nl.id}/subscribers`, m);
 });
 dash.post('/app/n/:nid/subscribers/:id/delete', async (req, res) => {
+  // 삭제한 구독자에게 계속 청구되지 않도록 자동 결제부터 끊는다
+  try { await cancelRebill(await db.prepare('SELECT id, payapp_rebill_no FROM subscribers WHERE id=? AND newsletter_id=?').get(req.params.id, req.nl.id)); } catch (e) {
+    console.error('자동 결제 해지 실패', e.message);
+    return back(res, `/app/n/${req.nl.id}/subscribers`, '자동 결제를 해지하지 못해 삭제하지 않았습니다. 잠시 후 다시 시도해 주세요.');
+  }
   await db.prepare('DELETE FROM subscribers WHERE id=? AND newsletter_id=?').run(req.params.id, req.nl.id);
   back(res, `/app/n/${req.nl.id}/subscribers`, '삭제했습니다.');
 });
@@ -365,6 +372,10 @@ dash.post('/app/n/:nid/layout', express.json({ limit: '200kb' }), async (req, re
   res.json({ ok: true });
 });
 dash.post('/app/n/:nid/delete', async (req, res) => {
+  try { await cancelNewsletterRebills(req.nl.id); } catch (e) {
+    console.error('자동 결제 해지 실패', e.message);
+    return back(res, '/app', '구독자의 자동 결제를 해지하지 못해 삭제하지 않았습니다. 잠시 후 다시 시도해 주세요.');
+  }
   await db.prepare('DELETE FROM newsletters WHERE id=?').run(req.nl.id);
   back(res, '/app', '뉴스레터를 삭제했습니다.');
 });

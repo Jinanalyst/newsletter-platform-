@@ -7,6 +7,7 @@ import { recordView } from './analytics.js';
 import { landingPage, homeSections } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
+import { cancelRebill } from './payapp.js';
 import { renderPost, h, personalize } from './render.js';
 import { page, fmt, platformFooter } from './views.js';
 import { tr } from './i18n.js';
@@ -444,12 +445,13 @@ pub.get('/unsubscribe/:token', async (req, res) => {
   const sub = await db.prepare('SELECT s.*, n.name AS nl_name FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE s.token=?').get(req.params.token);
   if (!sub) return res.status(404).page(req.t('구독 해지'), `<p>${req.t('유효하지 않은 링크입니다.')}</p>`);
   res.page(req.t('구독 해지'), sub.status === 'unsubscribed' ? `<h1>${req.t('이미 해지되었습니다')}</h1>`
-    : `<h1>${req.t('{name} 구독을 해지할까요?', { name: h(sub.nl_name) })}</h1><p class="mute">${h(sub.email)}</p><form method="post"><button class="primary">${req.t('구독 해지')}</button></form>`);
+    : `<h1>${req.t('{name} 구독을 해지할까요?', { name: h(sub.nl_name) })}</h1><p class="mute">${h(sub.email)}</p>${sub.payapp_rebill_no ? `<p>${req.t('자동 결제도 함께 해지됩니다.')}</p>` : ''}<form method="post"><button class="primary">${req.t('구독 해지')}</button></form>`);
 });
 // 메일 클라이언트의 원클릭 해지도 이 POST를 호출
 pub.post('/unsubscribe/:token', async (req, res) => {
   const sub = await db.prepare('SELECT * FROM subscribers WHERE token=?').get(req.params.token);
   if (!sub) return res.status(404).send('invalid');
+  await cancelRebill(sub).catch((e) => console.error('자동 결제 해지 실패', e.message)); // 실패해도 다음 결제 통보 때 다시 끊는다
   await db.prepare("UPDATE subscribers SET status='unsubscribed', unsub_at=? WHERE id=?").run(now(), sub.id);
   res.page(req.t('구독 해지됨'), `<h1>${req.t('구독이 해지되었습니다')}</h1><p>${req.t('그동안 읽어주셔서 감사합니다.')}</p>`);
 });

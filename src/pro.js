@@ -7,6 +7,7 @@ import { requireUser } from './auth.js';
 import { h } from './render.js';
 import { page, fmt, pct } from './views.js';
 import { stripeConfigured, won } from './billing.js';
+import { payappConfigured, MIN_PRICE } from './payapp.js';
 
 export const pro = Router();
 pro.use('/app', requireUser);
@@ -31,17 +32,17 @@ pro.get('/app/n/:nid/revenue', async (req, res) => {
     WHERE newsletter_id=? GROUP BY m ORDER BY m DESC`).all(nl.id);
   const pays = await db.prepare(`SELECT p.*, s.email FROM payments p LEFT JOIN subscribers s ON s.id=p.subscriber_id
     WHERE p.newsletter_id=? ORDER BY p.id DESC LIMIT 50`).all(nl.id);
-  const method = nl.stripe_account ? '자동 (Stripe Connect)' : '수동 정산 대기';
+  const method = nl.stripe_account && !payappConfigured() ? '자동 (Stripe Connect)' : '수동 정산 대기';
   res.page('수익', `<h1>수익 관리</h1>
-${stripeConfigured() && process.env.STRIPE_WEBHOOK_SECRET ? '' : '<div class="msg">Stripe가 연결되지 않았습니다. <code>.env</code>에 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET을 설정해야 결제가 동작합니다. 웹훅 주소: <code>' + h(baseUrl()) + '/stripe/webhook</code></div>'}
+${payappConfigured() || (stripeConfigured() && process.env.STRIPE_WEBHOOK_SECRET) ? '' : '<div class="msg">Stripe가 연결되지 않았습니다. <code>.env</code>에 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET을 설정해야 결제가 동작합니다. 웹훅 주소: <code>' + h(baseUrl()) + '/stripe/webhook</code></div>'}
 <div class="stats"><div class="stat"><b>${paidSubs.length}</b>유료 구독자</div><div class="stat"><b>${won(Math.round(mrr))}</b>월 반복 수익(추정)</div>
 <div class="stat"><b>${won(tot.g)}</b>누적 매출</div><div class="stat"><b>${won(tot.f)}</b>플랫폼 수수료 (${feePct()}%)</div>
 <div class="stat"><b>${won(tot.g - tot.f)}</b>순수익(정산 대상)</div></div>
 <h2>요금 설정</h2><form class="card" method="post" action="/app/n/${nl.id}/revenue/pricing">
 <div class="row"><div><label>월간 가격 (원, 0이면 미운영)</label><input type="number" name="price_monthly" min="0" max="10000000" value="${nl.price_monthly}"></div>
 <div><label>연간 가격 (원, 0이면 미운영)</label><input type="number" name="price_yearly" min="0" max="100000000" value="${nl.price_yearly}"></div></div>
-<label>Stripe 연결 계정 ID (선택, acct_...)</label><input name="stripe_account" value="${h(nl.stripe_account)}" placeholder="acct_1234...">
-<p class="mute">연결 계정이 있으면 결제 시 수수료(${feePct()}%)를 제하고 발행자 계정으로 자동 정산됩니다. 없으면 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. Stripe 자체 결제 수수료는 별도입니다.</p>
+${payappConfigured() ? `<input type="hidden" name="stripe_account" value="${h(nl.stripe_account)}"><p class="mute">최소 금액은 ${won(MIN_PRICE)}입니다. 결제 금액은 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. 결제대행 수수료는 별도입니다.</p>` : `<label>Stripe 연결 계정 ID (선택, acct_...)</label><input name="stripe_account" value="${h(nl.stripe_account)}" placeholder="acct_1234...">
+<p class="mute">연결 계정이 있으면 결제 시 수수료(${feePct()}%)를 제하고 발행자 계정으로 자동 정산됩니다. 없으면 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. Stripe 자체 결제 수수료는 별도입니다.</p>`}
 <p><button class="primary">저장</button></p></form>
 <p class="mute">유료 전용 글: 글 작성 화면에서 대상을 "유료만"으로 하거나, 본문에 <code>[[paywall]]</code> 한 줄을 넣으면 그 아래는 유료 구독자만 읽을 수 있습니다.
 구독 페이지 링크: <a href="/n/${h(nl.slug)}/upgrade" target="_blank">/n/${h(nl.slug)}/upgrade</a></p>
@@ -54,6 +55,8 @@ ${pays.map((p) => `<tr><td class="mute">${fmt(p.created_at)}</td><td>${h(p.email
 pro.post('/app/n/:nid/revenue/pricing', async (req, res) => {
   const acct = String(req.body.stripe_account || '').trim();
   if (acct && !/^acct_[A-Za-z0-9]+$/.test(acct)) return back(res, `/app/n/${req.nl.id}/revenue`, 'Stripe 계정 ID 형식이 올바르지 않습니다.');
+  const low = (v) => { const p = int(v); return p > 0 && p < MIN_PRICE; };
+  if (payappConfigured() && (low(req.body.price_monthly) || low(req.body.price_yearly))) return back(res, `/app/n/${req.nl.id}/revenue`, `가격은 0원(미운영) 또는 ${won(MIN_PRICE)} 이상이어야 합니다.`);
   await db.prepare('UPDATE newsletters SET price_monthly=?, price_yearly=?, stripe_account=? WHERE id=?')
     .run(int(req.body.price_monthly, 10_000_000), int(req.body.price_yearly, 100_000_000), acct, req.nl.id);
   back(res, `/app/n/${req.nl.id}/revenue`, '저장했습니다.');

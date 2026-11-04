@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { db, now, baseUrl, isPaid, dailySendLimit, sentLast24h } from './db.js';
 import { sendMail } from './mail.js';
+import { sendRenewalNotices } from './payapp.js';
 import { renderPost, toText, personalize } from './render.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -127,7 +128,8 @@ export async function tick(budgetMs = 50_000) {
     sent += (await sendBatch(p.id, deadline - Date.now())).sent;
   }
   const series = Date.now() < deadline ? await processSeries(deadline - Date.now()) : 0;
-  return { posts: posts.length, sent, series };
+  const renewals = Date.now() < deadline ? await sendRenewalNotices() : 0;
+  return { posts: posts.length, sent, series, renewals };
 }
 
 export function startScheduler() {

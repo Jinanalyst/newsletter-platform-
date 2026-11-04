@@ -4,6 +4,7 @@ import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
 import { sendMail } from './mail.js';
 import { h } from './render.js';
 import { page } from './views.js';
+import { payappConfigured, startCheckout, cancelRebill, renewable, MIN_PRICE } from './payapp.js';
 
 export const billing = Router();
 export const stripeConfigured = () => !!process.env.STRIPE_SECRET_KEY;
@@ -49,14 +50,27 @@ billing.get('/n/:slug/upgrade', async (req, res) => {
 <form class="card" method="post" action="/n/${h(nl.slug)}/upgrade/link"><label>${t('이메일')}</label><input type="email" name="email" required>
 <p><button class="primary">${t('링크 받기')}</button></p></form><p class="mute">${t('아직 구독 전이라면 먼저 {a}해 주세요.', { a: `<a href="/n/${h(nl.slug)}">${t('무료로 구독')}</a>` })}</p>${back}`, { msg: req.query.m });
   }
-  if (isPaid(sub)) {
+  const renewing = isPaid(sub) && payappConfigured() && renewable(sub) && nl.price_yearly >= MIN_PRICE;
+  if (isPaid(sub) && !renewing) {
     return res.page(t('유료 구독'), `<h1>${t('유료 구독 중입니다')}</h1>
 <p class="mute">${sub.paid_until ? t('이용 기간: {d}까지', { d: new Date(sub.paid_until).toLocaleDateString(loc) }) : t('발행자가 유료 혜택을 제공했습니다.')}</p>
+${sub.payapp_rebill_no ? `<p>${t('매월 자동 결제 중입니다.')}</p><form method="post" action="/n/${h(nl.slug)}/billing/cancel" onsubmit="return confirm('${t('자동 결제를 해지할까요? 이미 결제한 기간까지는 계속 이용할 수 있습니다.')}')"><input type="hidden" name="t" value="${h(sub.token)}"><button>${t('자동 결제 해지')}</button></form>` : ''}
 ${sub.stripe_customer && stripeConfigured() ? `<form method="post" action="/n/${h(nl.slug)}/billing"><input type="hidden" name="t" value="${h(sub.token)}"><button>${t('결제 관리 / 해지')}</button></form>` : ''}${back}`);
+  }
+  if (payappConfigured()) {
+    const option = (p, price, label, note, desc) => price >= MIN_PRICE ? `<p style="margin-top:18px"><b>${label}</b> <span style="font-size:22px">${won(price)}</span> <span class="mute">${note}</span><br><span class="mute">${desc}</span></p>
+<p><button class="primary" name="plan" value="${p}">${t('{label}으로 구독', { label })}</button></p>` : '';
+    return res.page(t('유료 구독'), `<h1>${renewing ? t('연간 구독 연장') : t('{name} 유료 구독', { name: h(nl.name) })}</h1>
+${renewing ? `<p class="mute">${t('이용 기간: {d}까지', { d: new Date(sub.paid_until).toLocaleDateString(loc) })}</p>` : `<p>${t('유료 구독자 전용 글을 읽고, 발행자를 직접 응원할 수 있습니다.')}</p>`}
+<form class="card" method="post" action="/n/${h(nl.slug)}/checkout"><input type="hidden" name="t" value="${h(sub.token)}">
+<label>${t('휴대폰 번호')}</label><input type="tel" name="phone" required placeholder="01012345678" autocomplete="tel">
+<p class="mute">${t('결제 진행을 위해 결제대행사(페이앱)에 전달하며, Lett에는 저장하지 않습니다.')}</p>
+${renewing ? '' : option('monthly', nl.price_monthly, t('월간'), '/ ' + t('월'), t('매월 자동 결제되며 언제든 해지할 수 있습니다.'))}
+${option('yearly', nl.price_yearly, t('연간'), '/ ' + t('년'), t('1년치를 한 번에 결제합니다. 자동 갱신되지 않으며, 만료 전에 메일로 알려드립니다.'))}</form>${back}`, { msg: req.query.m });
   }
   const plan = (p, price, label, note) => price > 0 ? `<form class="card" method="post" action="/n/${h(nl.slug)}/checkout"><input type="hidden" name="t" value="${h(sub.token)}">
 <input type="hidden" name="plan" value="${p}"><b>${label}</b> <span style="font-size:22px">${won(price)}</span> <span class="mute">${note}</span>
-<p><button class="primary" ${stripeConfigured() ? '' : 'disabled'}>${t('{label}로 구독', { label })}</button></p></form>` : '';
+<p><button class="primary" ${stripeConfigured() ? '' : 'disabled'}>${t('{label}으로 구독', { label })}</button></p></form>` : '';
   res.page(t('유료 구독'), `<h1>${t('{name} 유료 구독', { name: h(nl.name) })}</h1><p>${t('유료 구독자 전용 글을 읽고, 발행자를 직접 응원할 수 있습니다.')}</p>
 ${stripeConfigured() ? '' : `<div class="msg">${t('결제 시스템이 아직 연결되지 않았습니다.')} (STRIPE_SECRET_KEY)</div>`}
 ${plan('monthly', nl.price_monthly, t('월간'), '/ ' + t('월'))}${plan('yearly', nl.price_yearly, t('연간'), '/ ' + t('년'))}${back}`, { msg: req.query.m });
@@ -79,6 +93,16 @@ billing.post('/n/:slug/checkout', async (req, res) => {
   const plan = req.body.plan === 'yearly' ? 'yearly' : 'monthly';
   const price = plan === 'yearly' ? nl.price_yearly : nl.price_monthly;
   const fail = (m) => res.redirect(`/n/${nl.slug}/upgrade?t=${encodeURIComponent(req.body.t || '')}&m=` + encodeURIComponent(m));
+  if (payappConfigured()) {
+    if (!sub || !(price >= MIN_PRICE)) return fail('결제를 시작할 수 없습니다.');
+    if (isPaid(sub) && !(plan === 'yearly' && renewable(sub))) return fail('이미 유료 구독 중입니다.');
+    const phone = String(req.body.phone || '').replace(/\D/g, '');
+    if (!/^01\d{8,9}$/.test(phone)) return fail('휴대폰 번호를 확인해 주세요.');
+    try { return res.redirect(303, await startCheckout(nl, sub, plan, phone)); } catch (e) {
+      console.error('페이앱 결제 시작 실패', e.message);
+      return fail('결제 페이지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  }
   if (!sub || !price || !stripeConfigured()) return fail('결제를 시작할 수 없습니다.');
   try {
     const base = baseUrl();
@@ -117,7 +141,21 @@ billing.post('/n/:slug/billing', async (req, res) => {
   } catch (e) { res.redirect(`/n/${nl.slug}/upgrade?t=${sub.token}&m=` + encodeURIComponent('결제 관리 페이지를 열지 못했습니다.')); }
 });
 
-billing.get('/n/:slug/upgrade/done', (req, res) =>
+// 페이앱 자동 결제 해지: 이미 결제한 기간까지는 유지한다
+billing.post('/n/:slug/billing/cancel', async (req, res) => {
+  const nl = await getNl(req.params.slug);
+  const sub = nl && await activeSub(nl, req.body.t);
+  if (!sub || !sub.payapp_rebill_no) return gone(res);
+  const to = (m) => res.redirect(`/n/${nl.slug}/upgrade?t=${sub.token}&m=` + encodeURIComponent(m));
+  try { await cancelRebill(sub); } catch (e) {
+    console.error('페이앱 자동 결제 해지 실패', e.message);
+    return to('자동 결제를 해지하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+  to('자동 결제를 해지했습니다.');
+});
+
+// 페이앱은 결제 후 returnurl 로 POST 할 수 있다
+billing.all('/n/:slug/upgrade/done', (req, res) =>
   res.page(req.t('결제 완료'), `<h1>${req.t('감사합니다')}</h1><p>${req.t('결제가 확인되면 곧 유료 구독이 활성화됩니다. (보통 몇 초 이내)')}</p>`));
 
 // ---------- Stripe 웹훅 (app.js에서 raw body로 연결) ----------

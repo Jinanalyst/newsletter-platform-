@@ -11,6 +11,7 @@ import { creator } from './create.js';
 import { settle } from './settlement.js';
 import { ed } from './editor.js';
 import { billing, stripeWebhook } from './billing.js';
+import { payappFeedback } from './payapp.js';
 import { loadUser } from './auth.js';
 import { sbRouter, sbEnabled } from './supabase.js';
 import { page } from './views.js';
@@ -29,6 +30,7 @@ app.use((req, res, next) => {
 
 // Stripe 웹훅은 서명 검증을 위해 원본 바이트가 필요하므로 다른 파서보다 먼저 연결
 app.post('/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), stripeWebhook);
+app.post('/payapp/feedback', express.urlencoded({ extended: false, limit: '1mb' }), payappFeedback);
 
 // 예약 발송·시리즈·이어 보내기를 처리하는 주기 작업. Vercel Cron(또는 외부 스케줄러)이 CRON_SECRET 과 함께 호출한다.
 app.get('/api/cron', async (req, res, next) => {
