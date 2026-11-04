@@ -74,6 +74,7 @@ const nlForm = (nl = {}, isNew = true) => `<form class="card" method="post">
 <label>이름</label><input name="name" value="${h(nl.name || '')}" required maxlength="60">
 ${isNew ? `<label>주소 (영문 소문자·숫자·하이픈, 3~30자)</label><div class="row nowrap"><span class="mute">/n/</span><input name="slug" pattern="[a-z0-9][a-z0-9\-]{2,29}" required placeholder="my-letter"></div>` : ''}
 <label>소개</label><textarea name="description" rows="3" maxlength="300" style="font-family:inherit">${h(nl.description || '')}</textarea>
+<label>탐색 카테고리 — 크리에이터 탐색 페이지에서 이 주제로 분류됩니다</label><select name="topic"><option value="">선택 안 함</option>${TOPICS.map(([k, l]) => `<option value="${k}"${nl.topic === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
 <label>글 카테고리 (쉼표로 구분, 최대 10개 — 글마다 하나를 고르고 공개 아카이브에서 필터로 쓰입니다)</label><input name="categories" value="${h(nl.categories || '')}" placeholder="예: 에세이, 인터뷰, 공지">
 <label>SNS · 링크 (선택 — 공개 페이지 상단에 아이콘으로 표시됩니다)</label>${snsFields(nl)}
 <label>로고</label><input type="hidden" name="logo" id="logo" value="${h(nl.logo || '')}">
@@ -456,7 +457,7 @@ dash.post('/app/n/:nid/settings', async (req, res) => {
   const cover = keepImg(b.cover, req.nl.cover);
   const coverP = coverPos(b.cover_pos);
   const accent = /^#[0-9a-f]{6}$/i.test(b.accent || '') ? b.accent : '';
-  await db.prepare('UPDATE newsletters SET name=?, description=?, logo=?, categories=?, cover=?, cover_pos=?, accent=?, sns=? WHERE id=?').run(name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, coverP, accent, parseSns(b), req.nl.id);
+  await db.prepare('UPDATE newsletters SET topic=?, name=?, description=?, logo=?, categories=?, cover=?, cover_pos=?, accent=?, sns=? WHERE id=?').run(topicKey(String(b.topic || ''), TOPICS), name.slice(0, 60), String(b.description || '').slice(0, 300), logo, categories, cover, coverP, accent, parseSns(b), req.nl.id);
   // 삭제된 카테고리를 쓰던 글은 분류 없음으로
   await db.prepare("UPDATE posts SET category='' WHERE newsletter_id=? AND category!='' AND strpos(','||?||',', ','||category||',')=0").run(req.nl.id, categories);
   back(res, `/app/n/${req.nl.id}/settings`, rejected ? '저장했습니다. 다만 이미지 주소가 올바르지 않아 기존 이미지를 유지했어요. 다시 업로드해 주세요.' : '저장했습니다.');

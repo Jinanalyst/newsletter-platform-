@@ -253,12 +253,13 @@ ${[['', '대시보드'], ['posts', '글'], ['subscribers', '구독자'], ['autom
 <span class="sp"></span><a href="${nl.is_owner && publicHost(nl) ? `/app/n/${nl.id}/edit-public` : h(publicUrl(nl))}" target="_blank" rel="noopener">공개 페이지 ↗</a>${logout}</nav>`;
   } else if (user) {
     nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><a href="/app" class="${active === 'app' ? 'on' : ''}">${t('내 뉴스레터')}</a>
+<a href="/creators" class="${active === 'creators' ? 'on' : ''}">${t('크리에이터 탐색')}</a><a href="/posts">${t('커뮤니티')}</a>
 <a href="/create" class="${active === 'create' ? 'on' : ''}">${t('크리에이트')}</a>
 <a href="/settlement" class="${active === 'settlement' ? 'on' : ''}">${t('정산')}</a>
 <a href="/billing" class="${active === 'billing' ? 'on' : ''}">${t('요금제 관리')}</a>
 <a href="/app/profile" class="${active === 'profile' ? 'on' : ''}">${t('프로필')}</a><span class="sp"></span><span class="mute">${h(user.name || user.email)}</span>${logout}</nav>`;
   } else {
-    nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="sp"></span><a href="/login">${t('로그인')}</a><a class="btn primary sm" href="/signup">${t('시작하기')}</a></nav>`;
+    nav = `<nav><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><a href="/creators" class="${active === 'creators' ? 'on' : ''}">${t('크리에이터 탐색')}</a><a href="/posts">${t('커뮤니티')}</a><span class="sp"></span><a href="/login">${t('로그인')}</a><a class="btn primary sm" href="/signup">${t('시작하기')}</a></nav>`;
   }
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

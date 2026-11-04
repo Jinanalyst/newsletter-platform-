@@ -8,6 +8,7 @@ import { plans } from './plans.js';
 import { dash } from './dashboard.js';
 import { pro } from './pro.js';
 import { creator } from './create.js';
+import { creators } from './creators.js';
 import { settle } from './settlement.js';
 import { admin } from './admin.js';
 import { ed } from './editor.js';
@@ -63,6 +64,7 @@ app.use(claim); // 홈에서 입력한 주소(.lett.live)를 로그인·가입 �
 app.use(pub);
 app.use(feed); // 커뮤니티 포스트(/posts)
 app.use(legal); // 개인정보처리방침(/privacy) · 환불 정책(/refund)
+app.use(creators); // 크리에이터 탐색(/creators)
 app.use(creator); // 크리에이트(/create) · 상품 페이지(/c/:id)
 app.use(settle); // 통합 정산(/settlement) · 운영자 정산 처리(/admin/payouts)
 app.use(admin); // 운영자 화면(/admin)

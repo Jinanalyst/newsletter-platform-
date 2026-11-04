@@ -187,7 +187,7 @@ ${msg ? `<div class="err" role="alert">${h(t(msg))}</div>` : ''}
 <meta property="og:title" content="${h(t('lett. — 당신의 이야기가 시작되는 곳'))}"><meta property="og:description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.'))}">
 <meta name="theme-color" content="#F8FAFC">${FAVICON}<style>${CSS}</style></head><body>
 <header id="hd"><div class="wrap nav"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a>
-<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="/posts">${t('포스트')}</a><a href="#courses">${t('강의')}</a><a href="#explore">${t('탐색')}</a><a href="#pricing">${t('요금제')}</a></nav><span class="sp"></span>
+<nav class="links" aria-label="${t('주요 메뉴')}"><a href="#how">${t('시작하기')}</a><a href="#features">${t('기능')}</a><a href="/posts">${t('커뮤니티')}</a><a href="#courses">${t('강의')}</a><a href="/creators">${t('탐색')}</a><a href="#pricing">${t('요금제')}</a></nav><span class="sp"></span>
 ${user ? `<a class="login" href="/app/profile">${t('프로필')}</a><a class="pill sm" href="/app">${t('내 뉴스레터')}</a>` : `<a class="login" href="/login">${t('로그인')}</a><a class="pill sm" href="/signup">${t('시작하기')}</a>`}</div></header>
 
 <main>

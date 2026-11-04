@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 18; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 19; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -366,6 +366,15 @@ CREATE TABLE IF NOT EXISTS payment_events (
   UNIQUE (kind, state, ref)
 );
 CREATE INDEX IF NOT EXISTS idx_pevent_user ON payment_events(user_id, id);
+-- 탐색 개편: 커뮤니티 글에 제목·카테고리·조회수, 좋아요 시각(최근 7일 인기순용), 뉴스레터에 탐색용 주제
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS views INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE note_likes ADD COLUMN IF NOT EXISTS created_at TEXT;
+ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS topic TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_note_cat ON notes(category, id);
+CREATE INDEX IF NOT EXISTS idx_ncomment_at ON note_comments(created_at);
+CREATE INDEX IF NOT EXISTS idx_nlike_at ON note_likes(created_at);
 `;
 
 // ---------- 드라이버 ----------
