@@ -6,7 +6,7 @@ import { db, now, baseUrl } from './db.js';
 import { requireUser } from './auth.js';
 import { h } from './render.js';
 import { PLANS, PLAN_CONFIG, won, planCards, compareTable, PLAN_CSS } from './plan-data.js';
-import { ownerLimits, monthlySent, subscriberCount, creatorSales, monthRange, pgFeePct, graceUntil } from './plan-limits.js';
+import { ownerLimits, hasUpgrade, monthlySent, subscriberCount, creatorSales, monthRange, pgFeePct, graceUntil } from './plan-limits.js';
 import { isAdmin } from './settlement.js';
 import { fmt } from './views.js';
 import { LOCALES } from './i18n.js';
@@ -179,7 +179,7 @@ plans.get('/billing', requireUser, async (req, res) => {
 <div class="card"><p style="margin-top:0">${status}</p>
 ${u.payapp_rebill_no && paid ? `<form method="post" action="/pricing/cancel" style="margin:0" onsubmit="return confirm('구독을 취소할까요? 이미 결제한 기간까지는 계속 이용할 수 있고, 이후 Free로 전환됩니다.')"><button class="danger">구독 취소</button></form>` : ''}</div>
 <h2>이용량</h2><div class="card">${meter('이번 달 이메일 발송량', sent, lim.monthly)}${meter('구독자 (모든 뉴스레터 합계)', subs, lim.subscribers)}
-${!lim.open && (sent >= lim.monthly || (lim.subscribers !== null && subs >= lim.subscribers)) ? '<p class="mute" style="margin:0">한도에 도달했습니다. <a href="/pricing">상위 요금제</a>로 바꾸면 바로 이어서 쓸 수 있어요.</p>' : ''}</div>
+${!lim.open && (sent >= lim.monthly || (lim.subscribers !== null && subs >= lim.subscribers)) ? `<p class="mute" style="margin:0">한도에 도달했습니다.${hasUpgrade(lim) ? ' <a href="/pricing">상위 요금제</a>로 바꾸면 바로 이어서 쓸 수 있어요.' : ''}</p>` : ''}</div>
 <h2>이번 달 수익</h2><div class="stats"><div class="stat"><b>${won(S.gross)}</b>유료 콘텐츠 매출</div><div class="stat"><b>${won(S.fee)}</b>Lett 플랫폼 수수료</div>
 <div class="stat"><b>${pg === null ? '별도' : won(S.pg)}</b>결제 수수료${pg === null ? '' : ` (예상 ${pg}%)`}</div><div class="stat"><b>${won(S.net)}</b>예상 정산금액</div></div>
 <p class="mute">${pg === null ? '외부 결제 수수료는 결제대행사 계약에 따라 별도로 차감되며, 예상 정산금액에는 아직 반영되지 않았습니다. ' : ''}${creatorPaymentsOn() ? '' : '독자 결제와 정산은 결제대행사 계약 확인 후 제공되며, 그전까지 금액은 예상치입니다. '}<a href="/settlement">정산 자세히 보기</a></p>

@@ -21,6 +21,8 @@ export function limitsFor(u) {
   if (u && inGrace(u)) return { ...LIMITS.business, plan: 'business', grace: true };
   return { ...LIMITS.free, plan: 'free', grace: false };
 }
+// 더 올릴 요금제가 있는지 (유예 중인 계정은 실제로 결제한 플랜이 없으므로 있음)
+export const hasUpgrade = (lim) => lim.grace || lim.plan !== 'business';
 export const ownerLimits = async (ownerId) => limitsFor(await db.prepare('SELECT plan, plan_until, created_at FROM users WHERE id=?').get(ownerId));
 
 // 유료 권한이 있는 소유자만 고르는 SQL 조건 (users 별칭은 u)
@@ -53,10 +55,10 @@ export async function notifySubscriberLimit(ownerId) {
   const m = monthKey();
   if (!(await db.prepare('UPDATE users SET sub_notice_month=? WHERE id=? AND sub_notice_month<>?').run(m, ownerId, m)).changes) return;
   const u = await db.prepare('SELECT email FROM users WHERE id=?').get(ownerId), url = `${baseUrl()}/pricing`;
-  const cap = (await ownerLimits(ownerId)).subscribers?.toLocaleString('ko-KR');
+  const lim = await ownerLimits(ownerId), up = hasUpgrade(lim), cap = lim.subscribers?.toLocaleString('ko-KR');
   sendMail({ to: u.email, subject: '[lett.] 구독자 한도에 도달했습니다', fromName: 'lett.',
-    html: `<p>현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다. 기존 구독자와 뉴스레터는 그대로 유지됩니다. <a href="${url}">요금제</a>를 올리면 바로 다시 받을 수 있습니다.</p>`,
-    text: `현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다. 요금제를 올리면 바로 다시 받을 수 있습니다: ${url}` }).catch((e) => console.error('구독자 한도 안내 메일 오류', e.message));
+    html: `<p>현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다. 기존 구독자와 뉴스레터는 그대로 유지됩니다.${up ? ` <a href="${url}">요금제</a>를 올리면 바로 다시 받을 수 있습니다.` : ''}</p>`,
+    text: `현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다.${up ? ` 요금제를 올리면 바로 다시 받을 수 있습니다: ${url}` : ''}` }).catch((e) => console.error('구독자 한도 안내 메일 오류', e.message));
 }
 
 // 한도의 80%를 넘으면 운영 화면에 보여 주는 안내
@@ -68,7 +70,7 @@ export async function usageNotice(ownerId) {
   else if (lim.subscribers !== null && subs >= lim.subscribers * 0.8) notes.push(`구독자 ${subs.toLocaleString('ko-KR')}명으로 한도 ${lim.subscribers.toLocaleString('ko-KR')}명에 가까워졌습니다.`);
   if (sent >= lim.monthly) notes.push(`이번 달 이메일 발송량 ${lim.monthly.toLocaleString('ko-KR')}건을 모두 사용했습니다.`);
   else if (sent >= lim.monthly * 0.8) notes.push(`이번 달 이메일을 ${sent.toLocaleString('ko-KR')}건 보내 한도 ${lim.monthly.toLocaleString('ko-KR')}건에 가까워졌습니다.`);
-  return notes.length ? `<div class="msg">${notes.join(' ')} <a href="/pricing">상위 요금제 보기</a></div>` : '';
+  return notes.length ? `<div class="msg">${notes.join(' ')}${hasUpgrade(lim) ? ' <a href="/pricing">상위 요금제 보기</a>' : ''}</div>` : '';
 }
 
 // ---------- 거래 수수료 ----------

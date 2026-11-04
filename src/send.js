@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { db, now, baseUrl, isPaid, dailySendLimit, sentLast24h } from './db.js';
 import { sendMail } from './mail.js';
 import { sendRenewalNotices } from './payapp.js';
-import { ownerLimits, monthlySent, monthKey, paidOwnerSql, releaseLapsedDomains } from './plan-limits.js';
+import { ownerLimits, hasUpgrade, monthlySent, monthKey, paidOwnerSql, releaseLapsedDomains } from './plan-limits.js';
 import { renderPost, toText, personalize } from './render.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,10 +18,10 @@ async function notifyQuota(ownerId, monthly) {
   const m = monthKey();
   if (!(await db.prepare('UPDATE users SET quota_notice_month=? WHERE id=? AND quota_notice_month<>?').run(m, ownerId, m)).changes) return;
   const u = await db.prepare('SELECT email FROM users WHERE id=?').get(ownerId);
-  const url = `${baseUrl()}/pricing`;
+  const url = `${baseUrl()}/pricing`, up = hasUpgrade(await ownerLimits(ownerId));
   sendMail({ to: u.email, subject: '[lett.] 이번 달 이메일 발송량을 모두 사용했습니다', fromName: 'lett.',
-    html: `<p>이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송되며, <a href="${url}">요금제</a>를 올리면 바로 이어집니다.</p>`,
-    text: `이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송되며, 요금제를 올리면 바로 이어집니다: ${url}` }).catch((e) => console.error('발송 한도 안내 메일 오류', e.message));
+    html: `<p>이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송${up ? `되며, <a href="${url}">요금제</a>를 올리면 바로 이어집니다` : '됩니다'}.</p>`,
+    text: `이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송${up ? `되며, 요금제를 올리면 바로 이어집니다: ${url}` : '됩니다.'}` }).catch((e) => console.error('발송 한도 안내 메일 오류', e.message));
 }
 
 // 대상: 확정된 구독자 중 아직 못 받은 사람, 글의 audience(전체/유료/무료)와 구독자 그룹 조건 적용

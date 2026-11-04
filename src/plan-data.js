@@ -5,9 +5,9 @@
 // subscribers: null 이면 무제한 · seats: 소유자 포함 인원 · stats: 1 기본, 2 상세, 3 고급
 // automation: 0 없음, 1 기본(메일 단계·며칠 뒤 발송), 2 고급(조건부 발송·일시정지·날짜 지정)
 export const PLAN_CONFIG = {
-  free: { name: 'Free', price: 0, feePct: 8, subscribers: 1000, monthly: 2000, seats: 1, stats: 1, groups: false, domain: false, automation: 0, api: false, branding: false, desc: '누구나 무료로 시작하는 플랜' },
-  pro: { name: 'Pro', price: 9900, feePct: 4, subscribers: 10000, monthly: 20000, seats: 1, stats: 2, groups: true, domain: true, automation: 1, api: false, branding: true, desc: '독자가 늘어나는 크리에이터를 위한 플랜' },
-  business: { name: 'Business', price: 29900, feePct: 2, subscribers: null, monthly: 100000, seats: 5, stats: 3, groups: true, domain: true, automation: 2, api: true, branding: true, desc: '팀과 브랜드를 위한 플랜' },
+  free: { name: 'Free', price: 0, feePct: 8, subscribers: 500, monthly: 300, seats: 1, stats: 1, groups: false, domain: false, automation: 0, api: false, branding: false, desc: '누구나 무료로 시작하는 플랜' },
+  pro: { name: 'Pro', price: 9900, feePct: 4, subscribers: 5000, monthly: 3000, seats: 1, stats: 2, groups: true, domain: true, automation: 1, api: false, branding: true, desc: '독자가 늘어나는 크리에이터를 위한 플랜' },
+  business: { name: 'Business', price: 29900, feePct: 2, subscribers: 20000, monthly: 10000, seats: 5, stats: 3, groups: true, domain: true, automation: 2, api: true, branding: true, desc: '팀과 브랜드를 위한 플랜' },
 };
 export const POPULAR_PLAN = 'pro';
 export const PLANS = { pro: PLAN_CONFIG.pro, business: PLAN_CONFIG.business }; // 결제할 수 있는 플랜

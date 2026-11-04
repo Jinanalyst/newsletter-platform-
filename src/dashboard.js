@@ -3,7 +3,7 @@ import express from 'express';
 import { randomBytes } from 'node:crypto';
 import { saveImage, isOwnImageUrl } from './storage.js';
 import { db, now, isPaid, cleanTags } from './db.js';
-import { ownerLimits, monthlySent, graceUntil, upsell, subscriberCount, subscriberRoom, notifySubscriberLimit, usageNotice } from './plan-limits.js';
+import { ownerLimits, monthlySent, graceUntil, upsell, hasUpgrade, subscriberCount, subscriberRoom, notifySubscriberLimit, usageNotice } from './plan-limits.js';
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
 import { smtpConfigured } from './mail.js';
@@ -403,7 +403,7 @@ dash.post('/app/n/:nid/subscribers/add', async (req, res) => {
   if (!EMAIL_RE.test(email)) return back(res, `/app/n/${req.nl.id}/subscribers`, '이메일 형식 오류');
   if ((await subscriberRoom(req.nl.owner_id)) <= 0) {
     await notifySubscriberLimit(req.nl.owner_id);
-    return back(res, `/app/n/${req.nl.id}/subscribers`, '요금제의 구독자 한도에 도달해 추가할 수 없습니다. 상위 요금제로 올리면 더 받을 수 있어요.');
+    return back(res, `/app/n/${req.nl.id}/subscribers`, `요금제의 구독자 한도에 도달해 추가할 수 없습니다.${hasUpgrade(await ownerLimits(req.nl.owner_id)) ? ' 상위 요금제로 올리면 더 받을 수 있어요.' : ''}`);
   }
   back(res, `/app/n/${req.nl.id}/subscribers`, await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
 });
@@ -416,7 +416,7 @@ dash.post('/app/n/:nid/subscribers/import', async (req, res) => {
     added += a; room -= a;
   }
   if (over) await notifySubscriberLimit(req.nl.owner_id);
-  const skip = [over && `구독자 한도 초과 ${over}명 (상위 요금제로 올리면 더 받을 수 있어요)`, rows.length - added - over && `이미 있는 ${rows.length - added - over}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
+  const skip = [over && `구독자 한도 초과 ${over}명${hasUpgrade(await ownerLimits(req.nl.owner_id)) ? ' (상위 요금제로 올리면 더 받을 수 있어요)' : ''}`, rows.length - added - over && `이미 있는 ${rows.length - added - over}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
   back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.${skip.length ? ` (건너뜀: ${skip.join(', ')})` : ''}`);
 });
 // 결제 없이 유료 혜택 지정/해제 (후원자·지인 등). 결제 중인 구독자는 해제하지 않는다
