@@ -24,12 +24,12 @@ async function notifyQuota(ownerId, monthly) {
     text: `이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송되며, 요금제를 올리면 바로 이어집니다: ${url}` }).catch((e) => console.error('발송 한도 안내 메일 오류', e.message));
 }
 
-// 대상: 확정된 구독자 중 아직 못 받은 사람, 글의 audience(전체/유료/무료) 조건 적용
+// 대상: 확정된 구독자 중 아직 못 받은 사람, 글의 audience(전체/유료/무료)와 구독자 그룹 조건 적용
 export const recipientsFor = async (post, limit = 100000) =>
   (await db.prepare(`SELECT s.* FROM subscribers s
-    WHERE s.newsletter_id=? AND s.status='active'
+    WHERE s.newsletter_id=? AND s.status='active'${post.group_id ? '\n      AND EXISTS (SELECT 1 FROM subscriber_group_members m WHERE m.group_id=? AND m.subscriber_id=s.id)' : ''}
       AND NOT EXISTS (SELECT 1 FROM send_log l WHERE l.post_id=? AND l.subscriber_id=s.id)
-    ORDER BY s.id LIMIT ?`).all(post.newsletter_id, post.id, limit))
+    ORDER BY s.id LIMIT ?`).all(...(post.group_id ? [post.newsletter_id, post.group_id] : [post.newsletter_id]), post.id, limit))
     .filter((s) => (post.audience === 'paid' ? isPaid(s) : post.audience === 'free' ? !isPaid(s) : true));
 
 // 한 명에게 발송 (일반 발행·시리즈 단계 공용). 이미 다른 곳에서 선점/발송했다면 건너뛰고 false.

@@ -1,15 +1,13 @@
-// 플랜별 기능 제한. 뉴스레터의 권한은 팀원이 아니라 소유자의 플랜으로 정한다.
-//  - 결제 수단이 연결되지 않았으면(개발 환경 등) 살 방법이 없으므로 제한하지 않는다
+// 플랜별 기능 제한과 거래 수수료. 뉴스레터의 권한은 팀원이 아니라 소유자의 플랜으로 정한다.
+//  - 플랜의 값은 plan-data.js 의 PLAN_CONFIG 한 곳에서 관리한다
+//  - 결제 수단이 연결되지 않았으면(개발 환경 등) 살 방법이 없으므로 제한하지 않는다. 수수료는 이때도 실제 플랜 기준이다
 //  - 제한이 도입되기 전에 가입한 계정은 유예 기간까지 Business 권한으로 쓴다 (PLAN_GRACE_CUTOFF, PLAN_GRACE_UNTIL)
-import { db, now } from './db.js';
+import { db, now, baseUrl } from './db.js';
 import { payappConfigured } from './payapp.js';
+import { sendMail } from './mail.js';
+import { PLAN_CONFIG } from './plan-data.js';
 
-// automation: 0 없음, 1 기본(메일 단계·며칠 뒤 발송), 2 고급(조건부 발송·일시정지·날짜 지정)
-export const LIMITS = {
-  free: { monthly: 1000, analytics: false, domain: false, automation: 0, team: false, api: false, branding: false },
-  pro: { monthly: 10000, analytics: true, domain: true, automation: 1, team: false, api: false, branding: true },
-  business: { monthly: 50000, analytics: true, domain: true, automation: 2, team: true, api: true, branding: true },
-};
+export const LIMITS = Object.fromEntries(Object.entries(PLAN_CONFIG).map(([k, p]) => [k, { ...p, analytics: p.stats >= 2, team: p.seats > 1 }]));
 
 const enforced = () => payappConfigured() || !!process.env.PG_PROVIDER;
 const graceCutoff = () => process.env.PLAN_GRACE_CUTOFF || '2026-11-04T15:00:00.000Z'; // 2026-11-05 00:00 (한국 시간) 이전 가입
@@ -17,8 +15,9 @@ export const graceUntil = () => process.env.PLAN_GRACE_UNTIL || '2026-12-04T15:0
 const inGrace = (u) => now() < graceUntil() && u.created_at < graceCutoff();
 
 export function limitsFor(u) {
-  if (!enforced()) return { ...LIMITS.business, plan: 'business', grace: false };
-  if (u && LIMITS[u.plan] && u.plan_until && u.plan_until > now()) return { ...LIMITS[u.plan], plan: u.plan, grace: false };
+  const paid = u && LIMITS[u.plan] && u.plan_until && u.plan_until > now() ? u.plan : '';
+  if (!enforced()) { const plan = paid || 'free'; return { ...LIMITS.business, plan, feePct: LIMITS[plan].feePct, name: LIMITS[plan].name, grace: false, open: true }; }
+  if (paid) return { ...LIMITS[paid], plan: paid, grace: false };
   if (u && inGrace(u)) return { ...LIMITS.business, plan: 'business', grace: true };
   return { ...LIMITS.free, plan: 'free', grace: false };
 }
@@ -34,9 +33,59 @@ export function paidOwnerSql() {
 // 이번 달(한국 시간) 소유자의 모든 뉴스레터에서 보낸 메일 수
 const KST = 9 * 36e5;
 export const monthKey = () => new Date(Date.now() + KST).toISOString().slice(0, 7);
-const monthStart = () => new Date(Date.parse(`${monthKey()}-01T00:00:00Z`) - KST).toISOString();
+const monthStart = (key = monthKey()) => new Date(Date.parse(`${key}-01T00:00:00Z`) - KST).toISOString();
+// 한국 시간 달력 기준 그 달의 [시작, 다음 달 시작)
+export function monthRange(key = monthKey()) {
+  const [y, m] = key.split('-').map(Number);
+  return [monthStart(key), monthStart(new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7))];
+}
 export const monthlySent = async (ownerId) => (await db.prepare(`SELECT COUNT(*) n FROM send_log l JOIN posts p ON p.id=l.post_id JOIN newsletters n ON n.id=p.newsletter_id
   WHERE n.owner_id=? AND l.sent_at>=? AND l.error IS NULL`).get(ownerId, monthStart())).n;
+
+// ---------- 구독자 한도 (소유자의 모든 뉴스레터 합계) ----------
+export const subscriberCount = async (ownerId) => (await db.prepare(`SELECT COUNT(*) n FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE n.owner_id=? AND s.status='active'`).get(ownerId)).n;
+export async function subscriberRoom(ownerId) {
+  const lim = await ownerLimits(ownerId);
+  return lim.subscribers === null ? Infinity : Math.max(0, lim.subscribers - await subscriberCount(ownerId));
+}
+// 구독자 한도에 닿으면 소유자에게 한 달에 한 번 알린다. 이미 있는 구독자는 그대로 두고 새 구독만 막는다
+export async function notifySubscriberLimit(ownerId) {
+  const m = monthKey();
+  if (!(await db.prepare('UPDATE users SET sub_notice_month=? WHERE id=? AND sub_notice_month<>?').run(m, ownerId, m)).changes) return;
+  const u = await db.prepare('SELECT email FROM users WHERE id=?').get(ownerId), url = `${baseUrl()}/pricing`;
+  const cap = (await ownerLimits(ownerId)).subscribers?.toLocaleString('ko-KR');
+  sendMail({ to: u.email, subject: '[lett.] 구독자 한도에 도달했습니다', fromName: 'lett.',
+    html: `<p>현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다. 기존 구독자와 뉴스레터는 그대로 유지됩니다. <a href="${url}">요금제</a>를 올리면 바로 다시 받을 수 있습니다.</p>`,
+    text: `현재 요금제의 구독자 한도 ${cap}명에 도달해 새 구독을 받지 못하고 있습니다. 요금제를 올리면 바로 다시 받을 수 있습니다: ${url}` }).catch((e) => console.error('구독자 한도 안내 메일 오류', e.message));
+}
+
+// 한도의 80%를 넘으면 운영 화면에 보여 주는 안내
+export async function usageNotice(ownerId) {
+  const lim = await ownerLimits(ownerId);
+  if (lim.open) return '';
+  const subs = await subscriberCount(ownerId), sent = await monthlySent(ownerId), notes = [];
+  if (lim.subscribers !== null && subs >= lim.subscribers) notes.push(`구독자 한도 ${lim.subscribers.toLocaleString('ko-KR')}명에 도달해 새 구독을 받을 수 없습니다.`);
+  else if (lim.subscribers !== null && subs >= lim.subscribers * 0.8) notes.push(`구독자 ${subs.toLocaleString('ko-KR')}명으로 한도 ${lim.subscribers.toLocaleString('ko-KR')}명에 가까워졌습니다.`);
+  if (sent >= lim.monthly) notes.push(`이번 달 이메일 발송량 ${lim.monthly.toLocaleString('ko-KR')}건을 모두 사용했습니다.`);
+  else if (sent >= lim.monthly * 0.8) notes.push(`이번 달 이메일을 ${sent.toLocaleString('ko-KR')}건 보내 한도 ${lim.monthly.toLocaleString('ko-KR')}건에 가까워졌습니다.`);
+  return notes.length ? `<div class="msg">${notes.join(' ')} <a href="/pricing">상위 요금제 보기</a></div>` : '';
+}
+
+// ---------- 거래 수수료 ----------
+// 결제대행(PG) 수수료율은 계약마다 다르고 페이앱 통보에도 금액이 오지 않는다. PG_FEE_PCT 를 넣기 전에는 계산하지 않고 "별도"로 표시한다
+export const pgFeePct = () => { const v = Number(process.env.PG_FEE_PCT); return process.env.PG_FEE_PCT && v >= 0 && v <= 50 ? v : null; };
+// 결제 시점의 요금제로 수수료를 정해 기록한다
+export async function saleFees(ownerId, amount) {
+  const lim = await ownerLimits(ownerId), pg = pgFeePct();
+  return { fee: Math.round((amount * lim.feePct) / 100), fee_pct: lim.feePct, creator_plan: lim.plan, pg_fee: pg === null ? 0 : Math.round((amount * pg) / 100) };
+}
+// 크리에이터의 기간 매출: 총매출(gross), Lett 수수료(fee), 결제 수수료(pg), 예상 정산금액(net)
+export async function creatorSales(ownerId, [from, to]) {
+  const r = await db.prepare(`SELECT COALESCE(SUM(amount),0) gross, COALESCE(SUM(fee),0) fee, COALESCE(SUM(pg_fee),0) pg, COUNT(*) n FROM (
+    SELECT p.amount, p.fee, p.pg_fee FROM payments p JOIN newsletters n ON n.id=p.newsletter_id WHERE n.owner_id=? AND p.created_at>=? AND p.created_at<?
+    UNION ALL SELECT amount, fee, pg_fee FROM course_sales WHERE owner_id=? AND created_at>=? AND created_at<?) x`).get(ownerId, from, to, ownerId, from, to);
+  return { ...r, net: r.gross - r.fee - r.pg };
+}
 
 // 커스텀 도메인 권한이 끝난 뉴스레터는 연결만 푼다. 주소는 남아 있어 다시 결제한 뒤 "연결 확인"으로 복구할 수 있다
 export async function releaseLapsedDomains() {

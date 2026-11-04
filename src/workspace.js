@@ -7,12 +7,12 @@ import { db, now, baseUrl, publicHost } from './db.js';
 import { requireUser, login, createToken, checkToken } from './auth.js';import { h } from './render.js';
 import { sendMail } from './mail.js';
 import { findNewsletter } from './access.js';
-import { ownerLimits, upsell } from './plan-limits.js';
+import { ownerLimits, upsell, subscriberRoom, notifySubscriberLimit } from './plan-limits.js';
 
 export const workspace = Router();
 
 export const PLATFORM_DOMAIN = () => (process.env.PLATFORM_DOMAIN || 'lett.live').toLowerCase();
-const MAX_TEAM = 5, MAX_KEYS = 5;
+const MAX_KEYS = 5;
 export const RESERVED = new Set(['www', 'app', 'api', 'admin', 'mail', 'smtp', 'ftp', 'cname', 'static', 'cdn', 'blog', 'help', 'support']);
 export const SUB_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;
 const DOMAIN_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
@@ -241,9 +241,9 @@ workspace.get(S + '/team', async (req, res) => {
   const list = await db.prepare(`SELECT m.*, u.name AS uname FROM team_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.newsletter_id=? ORDER BY m.id`).all(req.nl.id);
   const lim = await ownerLimits(req.nl.owner_id);
   shell(req, res, 'team', '팀원', `${lim.team ? '' : upsell('팀원 초대는 Business 플랜에서 쓸 수 있어요', '플랜에 팀 기능이 없으면 초대할 수 없고, 이미 있는 팀원도 이 뉴스레터에 들어올 수 없습니다.')}
-<div class="card"><b>팀원 초대</b><p class="mute">초대하면 가입하지 않은 이메일도 계정이 자동으로 만들어지고 초대 메일로 비밀번호를 정할 수 있어요. 팀원은 같은 뉴스레터에서 글 작성·발송, 구독자·자동화 관리 등 운영 화면을 쓸 수 있어요. 설정(도메인·API·팀)과 삭제는 소유자만 할 수 있습니다. 소유자 외 최대 ${MAX_TEAM}명.</p>
+<div class="card"><b>팀원 초대</b><p class="mute">초대하면 가입하지 않은 이메일도 계정이 자동으로 만들어지고 초대 메일로 비밀번호를 정할 수 있어요. 팀원은 같은 뉴스레터에서 글 작성·발송, 구독자·자동화 관리 등 운영 화면을 쓸 수 있어요. 설정(도메인·API·팀)과 삭제는 소유자만 할 수 있습니다. 소유자 외 최대 ${lim.seats}명.</p>
 <form method="post" action="${here(req, 'team/invite')}" class="row nowrap"><input type="email" name="email" placeholder="초대할 이메일" required style="max-width:320px"><button class="primary">초대 보내기</button></form></div>
-<div class="card"><b>팀원 (${list.length}/${MAX_TEAM})</b>
+<div class="card"><b>팀원 (소유자 포함 ${list.length + 1}/${lim.seats}명)</b>
 ${list.length ? `<table style="margin-top:10px"><tbody>${list.map((m) => `<tr><td>${h(m.email)}${m.uname ? ` <span class="mute">${h(m.uname)}</span>` : ''}</td>
 <td class="mute">${m.status === 'active' ? '참여 중' : `초대 대기 중 · <a href="${h(inviteLink(m.token))}">초대 링크</a>`}</td>
 <td style="text-align:right"><form method="post" action="${here(req, 'team/' + m.id + '/remove')}" style="margin:0"><button class="danger sm">${m.status === 'active' ? '내보내기' : '초대 취소'}</button></form></td></tr>`).join('')}</tbody></table>` : '<p class="mute">아직 팀원이 없습니다.</p>'}</div>`);
@@ -252,11 +252,12 @@ ${list.length ? `<table style="margin-top:10px"><tbody>${list.map((m) => `<tr><t
 workspace.post(S + '/team/invite', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const to = (m) => back(res, here(req, 'team'), m);
-  if (!(await ownerLimits(req.nl.owner_id)).team) return to('팀원 초대는 Business 플랜에서 쓸 수 있습니다.');
+  const lim = await ownerLimits(req.nl.owner_id);
+  if (!lim.team) return to('팀원 초대는 Business 플랜에서 쓸 수 있습니다.');
   if (!EMAIL_RE.test(email)) return to('이메일 형식이 올바르지 않습니다.');
   if (email === req.user.email.toLowerCase()) return to('본인은 이미 소유자입니다.');
   if (await db.prepare('SELECT 1 FROM team_members WHERE newsletter_id=? AND email=?').get(req.nl.id, email)) return to('이미 초대한 이메일입니다.');
-  if ((await db.prepare('SELECT COUNT(*) n FROM team_members WHERE newsletter_id=?').get(req.nl.id)).n >= MAX_TEAM) return to(`팀원은 최대 ${MAX_TEAM}명까지 초대할 수 있습니다.`);
+  if ((await db.prepare('SELECT COUNT(*) n FROM team_members WHERE newsletter_id=?').get(req.nl.id)).n >= lim.seats - 1) return to(`팀원은 소유자를 포함해 최대 ${lim.seats}명까지입니다.`);
   const token = randomBytes(24).toString('base64url');
   // 이미 가입한 이메일이면 그 계정에, 아니면 계정을 자동으로 만들어 바로 팀원(참여 중)으로 등록한다.
   // 새 계정은 메일의 링크로 비밀번호를 정하면 바로 쓸 수 있고(이메일 인증도 함께 완료), 같은 뉴스레터를 함께 운영한다
@@ -347,6 +348,10 @@ api.get('/api/v1/subscribers', async (req, res) => {
 api.post('/api/v1/subscribers', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'invalid_email' });
+  if ((await subscriberRoom(req.apiNl.owner_id)) <= 0) {
+    await notifySubscriberLimit(req.apiNl.owner_id);
+    return res.status(403).json({ error: 'subscriber_limit', message: '요금제의 구독자 한도에 도달했습니다.' });
+  }
   const added = (await db.prepare("INSERT OR IGNORE INTO subscribers(newsletter_id,email,name,status,token,source,created_at,confirmed_at) VALUES(?,?,?,'active',?,?,?,?)")
     .run(req.apiNl.id, email, String(req.body?.name || '').slice(0, 80), randomBytes(18).toString('base64url'), 'api', now(), now())).changes;
   res.status(added ? 201 : 200).json({ email, created: !!added });

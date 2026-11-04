@@ -2,13 +2,13 @@
 import { findNewsletter } from './access.js';
 import { parseLocal } from './editor.js';
 import { Router } from 'express';
-import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
+import { db, now, baseUrl, isPaid, hasPaid } from './db.js';
 import { requireUser } from './auth.js';
 import { h } from './render.js';
 import { page, fmt, pct } from './views.js';
 import { stripeConfigured, won } from './billing.js';
-import { payappConfigured, MIN_PRICE } from './payapp.js';
-import { ownerLimits, upsell } from './plan-limits.js';
+import { payappConfigured, contentPayapp, creatorPaymentsOn, MIN_PRICE } from './payapp.js';
+import { ownerLimits, upsell, pgFeePct } from './plan-limits.js';
 
 export const pro = Router();
 pro.use('/app', requireUser);
@@ -28,29 +28,33 @@ pro.get('/app/n/:nid/revenue', async (req, res) => {
   const nl = req.nl;
   const paidSubs = (await db.prepare("SELECT * FROM subscribers WHERE newsletter_id=? AND status='active' AND tier='paid'").all(nl.id)).filter(isPaid);
   const mrr = paidSubs.reduce((a, s) => a + (s.plan === 'yearly' ? nl.price_yearly / 12 : s.plan === 'monthly' ? nl.price_monthly : 0), 0);
-  const tot = await db.prepare('SELECT COALESCE(SUM(amount),0) g, COALESCE(SUM(fee),0) f, COUNT(*) n FROM payments WHERE newsletter_id=?').get(nl.id);
-  const months = await db.prepare(`SELECT substr(created_at,1,7) m, COUNT(*) n, SUM(amount) g, SUM(fee) f FROM payments
+  const tot = await db.prepare('SELECT COALESCE(SUM(amount),0) g, COALESCE(SUM(fee),0) f, COALESCE(SUM(pg_fee),0) pg, COUNT(*) n FROM payments WHERE newsletter_id=?').get(nl.id);
+  const lim = await ownerLimits(nl.owner_id), detail = lim.stats >= 2, pgRate = pgFeePct();
+  const pgCell = (v) => (pgRate === null ? '별도' : won(v));
+  const months = await db.prepare(`SELECT substr(created_at,1,7) m, COUNT(*) n, SUM(amount) g, SUM(fee) f, SUM(pg_fee) pg FROM payments
     WHERE newsletter_id=? GROUP BY m ORDER BY m DESC`).all(nl.id);
   const pays = await db.prepare(`SELECT p.*, s.email FROM payments p LEFT JOIN subscribers s ON s.id=p.subscriber_id
     WHERE p.newsletter_id=? ORDER BY p.id DESC LIMIT 50`).all(nl.id);
-  const method = nl.stripe_account && !payappConfigured() ? '자동 (Stripe Connect)' : '수동 정산 대기';
+  const method = nl.stripe_account && !contentPayapp() ? '자동 (Stripe Connect)' : creatorPaymentsOn() ? '수동 정산 대기' : '정산 방식 확인 중';
   res.page('수익', `<h1>수익 관리</h1>
-${payappConfigured() || (stripeConfigured() && process.env.STRIPE_WEBHOOK_SECRET) ? '' : '<div class="msg">Stripe가 연결되지 않았습니다. <code>.env</code>에 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET을 설정해야 결제가 동작합니다. 웹훅 주소: <code>' + h(baseUrl()) + '/stripe/webhook</code></div>'}
+${contentPayapp() || (stripeConfigured() && process.env.STRIPE_WEBHOOK_SECRET) ? '' : '<div class="msg">독자 결제와 정산은 아직 열리지 않았습니다. 가격과 유료 전용 글은 미리 설정할 수 있고, 결제 없이 구독자를 유료로 지정할 수도 있어요. 결제대행사와 정산 방식이 확정되면 결제를 받을 수 있습니다.</div>'}
 <div class="stats"><div class="stat"><b>${paidSubs.length}</b>유료 구독자</div><div class="stat"><b>${won(Math.round(mrr))}</b>월 반복 수익(추정)</div>
-<div class="stat"><b>${won(tot.g)}</b>누적 매출</div><div class="stat"><b>${won(tot.f)}</b>플랫폼 수수료 (${feePct()}%)</div>
-<div class="stat"><b>${won(tot.g - tot.f)}</b>순수익(정산 대상)</div></div>
+<div class="stat"><b>${won(tot.g)}</b>총매출</div><div class="stat"><b>${won(tot.f)}</b>플랫폼 수수료 (현재 ${lim.name} ${lim.feePct}%)</div>
+<div class="stat"><b>${pgCell(tot.pg)}</b>결제 수수료${pgRate === null ? '' : ` (예상 ${pgRate}%)`}</div>
+<div class="stat"><b>${won(tot.g - tot.f - tot.pg)}</b>예상 정산금액</div></div>
+<p class="mute">${pgRate === null ? '외부 결제 수수료는 결제대행사 계약에 따라 별도로 차감되며, 예상 정산금액에는 아직 반영되지 않았습니다.' : '결제 수수료는 설정된 요율로 계산한 예상치입니다.'} 플랫폼 수수료는 결제 당시 요금제로 계산해 기록합니다. <a href="/billing">요금제 관리</a></p>
 <h2>요금 설정</h2><form class="card" method="post" action="/app/n/${nl.id}/revenue/pricing">
 <div class="row"><div><label>월간 가격 (원, 0이면 미운영)</label><input type="number" name="price_monthly" min="0" max="10000000" value="${nl.price_monthly}"></div>
 <div><label>연간 가격 (원, 0이면 미운영)</label><input type="number" name="price_yearly" min="0" max="100000000" value="${nl.price_yearly}"></div></div>
-${payappConfigured() ? `<input type="hidden" name="stripe_account" value="${h(nl.stripe_account)}"><p class="mute">최소 금액은 ${won(MIN_PRICE)}입니다. 결제 금액은 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. 결제대행 수수료는 별도입니다.</p>` : `<label>Stripe 연결 계정 ID (선택, acct_...)</label><input name="stripe_account" value="${h(nl.stripe_account)}" placeholder="acct_1234...">
-<p class="mute">연결 계정이 있으면 결제 시 수수료(${feePct()}%)를 제하고 발행자 계정으로 자동 정산됩니다. 없으면 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. Stripe 자체 결제 수수료는 별도입니다.</p>`}
+${contentPayapp() ? `<input type="hidden" name="stripe_account" value="${h(nl.stripe_account)}"><p class="mute">최소 금액은 ${won(MIN_PRICE)}입니다. 결제 금액은 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. 결제대행 수수료는 별도입니다.</p>` : !stripeConfigured() ? `<input type="hidden" name="stripe_account" value="${h(nl.stripe_account)}"><p class="mute">최소 금액은 ${won(MIN_PRICE)}입니다.</p>` : `<label>Stripe 연결 계정 ID (선택, acct_...)</label><input name="stripe_account" value="${h(nl.stripe_account)}" placeholder="acct_1234...">
+<p class="mute">연결 계정이 있으면 결제 시 수수료(${lim.feePct}%)를 제하고 발행자 계정으로 자동 정산됩니다. 없으면 플랫폼 계정으로 입금되며 아래 내역을 기준으로 수동 정산합니다. Stripe 자체 결제 수수료는 별도입니다.</p>`}
 <p><button class="primary">저장</button></p></form>
 <p class="mute">유료 전용 글: 글 작성 화면에서 대상을 "유료만"으로 하거나, 본문에 <code>[[paywall]]</code> 한 줄을 넣으면 그 아래는 유료 구독자만 읽을 수 있습니다.
 구독 페이지 링크: <a href="/n/${h(nl.slug)}/upgrade" target="_blank">/n/${h(nl.slug)}/upgrade</a></p>
-<h2>월별 정산 내역</h2><div class="card"><table><tr><th>월</th><th>결제 건수</th><th>매출</th><th>수수료</th><th>정산액</th><th>방식</th></tr>
-${months.map((m) => `<tr><td>${m.m}</td><td>${m.n}</td><td>${won(m.g)}</td><td>${won(m.f)}</td><td><b>${won(m.g - m.f)}</b></td><td>${method}</td></tr>`).join('') || '<tr><td colspan="6" class="mute">아직 결제 내역이 없습니다.</td></tr>'}</table></div>
+<h2>월별 매출 내역</h2><div class="card" style="overflow-x:auto"><table><tr><th>월</th><th>결제 건수</th><th>총매출</th><th>플랫폼 수수료</th><th>결제 수수료</th><th>예상 정산금액</th><th>방식</th></tr>
+${(detail ? months : months.slice(0, 3)).map((m) => `<tr><td>${m.m}</td><td>${m.n}</td><td>${won(m.g)}</td><td>${won(m.f)}</td><td>${pgCell(m.pg)}</td><td><b>${won(m.g - m.f - m.pg)}</b></td><td>${method}</td></tr>`).join('') || '<tr><td colspan="7" class="mute">아직 결제 내역이 없습니다.</td></tr>'}</table></div>${detail ? '' : '<p class="mute">Free 요금제는 최근 3개월과 최근 결제 10건을 보여 줍니다. 전체 내역은 <a href="/pricing">Pro 요금제</a>부터 볼 수 있고, 금액 합계는 위에 모두 포함되어 있어요.</p>'}
 <h2>최근 결제</h2><div class="card"><table><tr><th>일시</th><th>구독자</th><th>플랜</th><th>금액</th><th>수수료</th></tr>
-${pays.map((p) => `<tr><td class="mute">${fmt(p.created_at)}</td><td>${h(p.email || '(삭제됨)')}</td><td>${p.plan === 'yearly' ? '연간' : '월간'}</td><td>${won(p.amount)}</td><td>${won(p.fee)}</td></tr>`).join('')
+${(detail ? pays : pays.slice(0, 10)).map((p) => `<tr><td class="mute">${fmt(p.created_at)}</td><td>${h(p.email || '(삭제됨)')}</td><td>${p.plan === 'yearly' ? '연간' : '월간'}</td><td>${won(p.amount)}</td><td>${won(p.fee)}</td></tr>`).join('')
     || '<tr><td colspan="5" class="mute">없음</td></tr>'}</table></div>`, { nl, active: 'revenue', wide: true, msg: req.query.m });
 });
 pro.post('/app/n/:nid/revenue/pricing', async (req, res) => {

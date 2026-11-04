@@ -2,8 +2,11 @@
 //  - 월간은 정기결제(rebillRegist), 연간은 페이앱에 연간 주기가 없어 1년치 단건 결제(payrequest)로 처리하고 만료 전에 메일로 알린다.
 //  - 결제 확정은 feedbackurl 통보로만 한다. 검증 후 'SUCCESS'를 돌려주고, 처리에 실패하면 페이앱이 다시 통보한다.
 //  - 구매자 휴대폰 번호는 페이앱에 넘기기만 하고 저장하지 않는다.
+//  - 독자 결제는 대금이 Lett 판매자 계정으로 들어오는 구조라, 정산 방식이 확정되기 전에는 CREATOR_PAYMENTS_ENABLED=1 일 때만 연다.
+//    페이앱 문서에 분할 정산·수수료 자동 차감 기능이 없어 수수료는 장부로만 계산한다. 이미 등록된 자동 결제의 통보와 해지는 값과 무관하게 처리한다.
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { db, now, baseUrl, feePct } from './db.js';
+import { db, now, baseUrl } from './db.js';
+import { saleFees } from './plan-limits.js';
 import { sendMail } from './mail.js';
 import { h } from './render.js';
 
@@ -11,6 +14,15 @@ const API = 'https://api.payapp.kr/oapi/v2';
 const env = (k) => process.env[`PAYAPP_${k}`] || '';
 export const payappConfigured = () => !!(env('USERID') && env('LINKKEY') && env('LINKVAL') && env('REQUESTKEY'));
 export const MIN_PRICE = 1000; // 페이앱 결제 최소 금액
+export const creatorPaymentsOn = () => process.env.CREATOR_PAYMENTS_ENABLED === '1';
+export const contentPayapp = () => payappConfigured() && creatorPaymentsOn();
+
+// 결제 결과 기록 (운영자 화면용). 같은 통보가 다시 와도 한 번만 남고, 기록 실패가 결제 처리를 막지 않는다
+export const logPayment = ({ kind, state, ref, userId = null, newsletterId = null, amount = 0, message = '' }) =>
+  db.prepare('INSERT OR IGNORE INTO payment_events(kind,state,ref,user_id,newsletter_id,amount,message,created_at) VALUES(?,?,?,?,?,?,?,?)')
+    .run(kind, state, String(ref), userId, newsletterId, Number(amount) || 0, String(message).slice(0, 200), now()).catch((e) => console.error('결제 기록 오류', e.message));
+const failRef = (b, no) => String(b.mul_no || `${no}:${now().slice(0, 10)}`); // 자동 결제 실패 통보에는 결제 번호가 없을 수 있다
+export const startCheckoutFailed = (kind, orderId, userId, newsletterId, amount, e) => logPayment({ kind, state: 'failed', ref: `order:${orderId}`, userId, newsletterId, amount, message: `결제 시작 실패: ${e.message}` });
 
 const KST = 9 * 36e5;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
@@ -77,6 +89,7 @@ export async function startCheckout(nl, sub, plan, phone) {
     return q.get('payurl');
   } catch (e) {
     await db.prepare("UPDATE payapp_orders SET status='failed' WHERE id=?").run(id);
+    await startCheckoutFailed('content', id, nl.owner_id, nl.id, amount, e);
     throw e;
   }
 }
@@ -121,8 +134,10 @@ async function onPaid(b, order) {
     return;
   }
   const invoice = `payapp:${b.mul_no}`;
-  const claimed = (await db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?)')
-    .run(sub.newsletter_id, sub.id, invoice, order.plan, order.amount, Math.round((order.amount * feePct()) / 100), 'krw', now())).changes;
+  const { owner_id: ownerId } = await db.prepare('SELECT owner_id FROM newsletters WHERE id=?').get(sub.newsletter_id);
+  const fees = await saleFees(ownerId, order.amount);
+  const claimed = (await db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,fee_pct,creator_plan,pg_fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+    .run(sub.newsletter_id, sub.id, invoice, order.plan, order.amount, fees.fee, fees.fee_pct, fees.creator_plan, fees.pg_fee, 'krw', now())).changes;
   if (!claimed) return; // 이미 처리한 통보
   try {
     // 해지·수신 거부 뒤에 들어온 자동 결제면 기간만 반영하고 다음 결제를 끊는다
@@ -136,6 +151,7 @@ async function onPaid(b, order) {
     await db.prepare("UPDATE payapp_orders SET status=CASE WHEN status='cancelled' THEN status ELSE 'paid' END, mul_no=? WHERE id=?").run(String(b.mul_no), order.id);
     const old = sub.payapp_rebill_no && sub.payapp_rebill_no !== order.rebill_no ? sub.payapp_rebill_no : '';
     for (const no of [stop && order.rebill_no, old]) if (no) await stopRebill(no).catch((e) => console.error('자동 결제 해지 실패', no, e.message));
+    await logPayment({ kind: 'content', state: 'paid', ref: b.mul_no, userId: ownerId, newsletterId: sub.newsletter_id, amount: order.amount });
   } catch (e) {
     await db.prepare('DELETE FROM payments WHERE invoice_id=?').run(invoice); // 재통보 때 다시 처리되도록 되돌린다
     throw e;
@@ -149,11 +165,14 @@ async function onRefunded(b, order) {
   await db.prepare("UPDATE subscribers SET tier='free', paid_until=NULL, plan='', payapp_rebill_no='' WHERE id=?").run(order.subscriber_id);
   await db.prepare("UPDATE payapp_orders SET status='cancelled' WHERE id=?").run(order.id);
   if (order.rebill_no) await stopRebill(order.rebill_no).catch((e) => console.error('자동 결제 해지 실패', order.rebill_no, e.message));
+  const nl = await db.prepare('SELECT n.id, n.owner_id FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE s.id=?').get(order.subscriber_id);
+  await logPayment({ kind: 'content', state: 'refunded', ref: b.mul_no, userId: nl?.owner_id, newsletterId: nl?.id, amount: order.amount });
 }
 
-async function onRenewalFailed(order) {
-  const sub = await db.prepare('SELECT s.*, n.name nl_name, n.slug nl_slug FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE s.id=?').get(order.subscriber_id);
+async function onRenewalFailed(order, b) {
+  const sub = await db.prepare('SELECT s.*, n.name nl_name, n.slug nl_slug, n.owner_id FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE s.id=?').get(order.subscriber_id);
   if (!sub) return;
+  await logPayment({ kind: 'content', state: 'failed', ref: failRef(b, order.rebill_no), userId: sub.owner_id, newsletterId: sub.newsletter_id, amount: order.amount, message: '자동 결제 실패' });
   const url = upgradeUrl(sub.nl_slug, sub.token);
   sendMail({ to: sub.email, subject: `[${sub.nl_name}] 자동 결제에 실패했습니다`, fromName: sub.nl_name,
     html: `<p>등록된 결제 수단으로 유료 구독료를 결제하지 못했습니다. 이용 기간이 끝나면 <a href="${h(url)}">유료 구독 페이지</a>에서 다시 결제해 주세요.</p>`,
@@ -162,6 +181,7 @@ async function onRenewalFailed(order) {
 
 let planHandler = null; // 요금제 결제 통보는 plans.js 가 처리한다
 export const onPlanFeedback = (fn) => { planHandler = fn; };
+export { failRef };
 
 async function handleFeedback(b) {
   const forPlan = String(b.var1 || '').startsWith('plan:')
@@ -173,9 +193,12 @@ async function handleFeedback(b) {
   const state = String(b.pay_state);
   if (state === '4') await onPaid(b, order);
   else if (state === '9' || state === '64') await onRefunded(b, order);
-  else if (state === '99') await onRenewalFailed(order);
+  else if (state === '99') await onRenewalFailed(order, b);
   else if (state === '8' || state === '32') await db.prepare("UPDATE payapp_orders SET status='cancelled' WHERE id=? AND status='pending'").run(order.id);
-  else if (state === '70' || state === '71') console.warn('페이앱 부분 취소: 정산 금액 확인 필요', b.orig_mul_no || b.mul_no);
+  else if (state === '70' || state === '71') {
+    console.warn('페이앱 부분 취소: 정산 금액 확인 필요', b.orig_mul_no || b.mul_no);
+    await logPayment({ kind: 'content', state: 'partial', ref: b.mul_no, amount: b.price, message: '부분 취소: 정산 금액 확인 필요' });
+  }
 }
 
 export async function payappFeedback(req, res) {
@@ -186,6 +209,7 @@ export async function payappFeedback(req, res) {
   }
   try { await handleFeedback(b); } catch (e) {
     console.error('페이앱 통보 처리 오류', e.message);
+    await logPayment({ kind: 'unknown', state: 'error', ref: b.mul_no || b.rebill_no || '', amount: b.price, message: e.message });
     return res.status(500).type('text').send('FAIL');
   }
   res.type('text').send('SUCCESS');
@@ -193,7 +217,7 @@ export async function payappFeedback(req, res) {
 
 // ---------- 연간 구독 만료 안내 (주기 작업) ----------
 export async function sendRenewalNotices() {
-  if (!payappConfigured()) return 0;
+  if (!contentPayapp()) return 0;
   const t = now();
   const subs = await db.prepare(`SELECT s.*, n.name nl_name, n.slug nl_slug, n.price_yearly FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id
     WHERE s.tier='paid' AND s.plan='yearly' AND s.status='active' AND s.stripe_sub='' AND s.payapp_rebill_no='' AND s.renew_notice_at IS NULL AND s.paid_until>? AND s.paid_until<=? LIMIT 50`).all(t, plusDays(t, 14));

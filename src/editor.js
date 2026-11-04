@@ -3,6 +3,7 @@ import { findNewsletter } from './access.js';
 import { Router } from 'express';
 import express from 'express';
 import { db, now, cleanTags } from './db.js';
+import { ownerLimits } from './plan-limits.js';
 import { requireUser, cooldown } from './auth.js';
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
@@ -56,13 +57,22 @@ function content(b) {
 // 대표 이미지(썸네일): 업로드한 파일이나 https 주소만 허용
 const cleanThumb = (u) => (/^(https?:\/\/|\/uploads\/)\S+$/.test(String(u || '').trim()) ? String(u).trim().slice(0, 500) : '');
 
+// 발송 대상이 "group:<id>" 이면 이 뉴스레터의 그룹인지 확인해 group_id 로 저장한다. 이미 발송된 글의 대상은 바꾸지 않는다
+async function audienceGroup(p, nl, b) {
+  if (p.status === 'sent') return p.group_id;
+  const id = Number((/^group:(\d+)$/.exec(String(b.audience || '')) || [])[1] || 0);
+  if (!id) return 0;
+  if (id !== p.group_id && !(await ownerLimits(nl.owner_id)).groups) return 0;
+  return (await db.prepare('SELECT id FROM subscriber_groups WHERE id=? AND newsletter_id=?').get(id, nl.id))?.id || 0;
+}
+
 // 변경 전 내용을 기록해 두고(처음 저장 시) 새 내용으로 갱신
 async function applyContent(p, nl, b) {
   const c = content(b);
   if (!await hasVersions(p.id) && (p.subject || p.body_md)) await snapshot(p.id, { subject: p.subject, preview: p.preview, body_md: p.body_md }, 'initial', true);
   const t = now();
-  await db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, thumb=?, updated_at=? WHERE id=?')
-    .run(c.subject, c.preview, c.body_md, cleanCategory(nl, b.category), cleanTags(b.tags), ['paid', 'free'].includes(b.audience) ? b.audience : 'all', cleanThumb(b.thumb), t, p.id);
+  await db.prepare('UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, thumb=?, group_id=?, updated_at=? WHERE id=?')
+    .run(c.subject, c.preview, c.body_md, cleanCategory(nl, b.category), cleanTags(b.tags), ['paid', 'free'].includes(b.audience) ? b.audience : 'all', cleanThumb(b.thumb), await audienceGroup(p, nl, b), t, p.id);
   return { c, t };
 }
 
@@ -136,6 +146,7 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
 <p class="mute">이미 발송된 글입니다. 여기서 고친 내용은 <b>공개 페이지에만</b> 반영되고, 이미 받은 메일은 바뀌지 않습니다.</p>
 <div class="row"><button class="primary" name="action" value="update">수정 내용 저장</button><a class="btn" href="/app/n/${nl.id}/posts/${p.id}/stats">통계 보기</a><a class="btn" href="/n/${h(nl.slug)}/p/${p.id}" target="_blank" rel="noopener">공개 페이지 열기</a></div></div>`;
   const n = (await recipientsFor(p)).length;
+  const groups = (await ownerLimits(nl.owner_id)).groups || p.group_id ? await db.prepare('SELECT id, name FROM subscriber_groups WHERE newsletter_id=? ORDER BY name').all(nl.id) : [];
   const cats = categoriesOf(nl);
   const verCount = (await db.prepare('SELECT COUNT(*) n FROM post_versions WHERE post_id=?').get(p.id)).n;
   const tpls = await db.prepare('SELECT id,name,subject,preview,body_md FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
@@ -165,8 +176,8 @@ ${cats.length ? '' : `<span class="mute"><a href="/app/n/${nl.id}/settings">설�
 <button type="button" class="sm grow-end" id="pvclose">닫기 ✕</button></div>
 <div id="inbox" class="inbox" hidden></div><div class="pvwrap" id="pvwrap"><iframe id="pv" sandbox=""></iframe></div></div></div></div>
 ${sent ? sentCard : `<div class="card"><div class="row"><div><label>발송 대상</label><select name="audience">
-<option value="all" ${p.audience === 'all' ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만 (유료 전용 글)</option>
-<option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option></select></div>
+<option value="all" ${p.audience === 'all' && !p.group_id ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만 (유료 전용 글)</option>
+<option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option>${groups.map((g) => `<option value="group:${g.id}" ${p.group_id === g.id ? 'selected' : ''}>그룹: ${h(g.name)}</option>`).join('')}</select></div>
 <div><label>예약 시각 <span id="tzname"></span></label><input type="datetime-local" name="scheduled_at" id="sched"></div>
 <div style="align-self:flex-end"><button type="button" class="sm" data-q="tomorrow9">내일 오전 9시</button> <button type="button" class="sm" data-q="plus1h">1시간 뒤</button></div></div>
 <p class="mute">지금 발송하면 확정된 구독자 <b>${n}명</b>에게 전송됩니다. 유료 구간은 본문에 <code>[[paywall]]</code> 블록(“/유료”)을 넣으세요.</p>

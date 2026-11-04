@@ -234,7 +234,7 @@ ${feat('06', '쉬운 이사', 'Substack, Medium, 워드프레스 등 RSS가 있�
 
 <section id="pricing" class="alt"><div class="wrap"><div class="kicker">PRICING</div><h2>${t('요금제')}</h2>
 <p class="sub" style="margin-bottom:0">${t('부가세 포함 · 결제일로부터 7일 이내 환불 가능')} · <a href="/refund" style="text-decoration:underline">${t('환불 정책')}</a></p>
-${PLAN_CSS}${planCards(t, () => `<button class="plbtn off" disabled>${t('준비 중')}</button>`)}${compareTable(t)}</div></section>
+${PLAN_CSS}${planCards(t, (key) => (key === 'free' ? `<a class="plbtn ghost" href="${user ? '/app' : '/signup'}">${t('무료로 시작하기')}</a>` : `<a class="plbtn" href="/pricing">${t('요금제 보기')}</a>`))}${compareTable(t)}</div></section>
 
 <div class="band"><div class="wrap"><div class="bandin rv"><h2>${t('오늘, 첫 번째 이야기를')}<br>${t('시작해 보세요.')}</h2><p>${t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.')}</p>
 <a class="pill white" href="${user ? '/app' : '/signup'}">${user ? t('내 뉴스레터로 이동') : t('무료로 시작하기')} →</a></div></div></div>

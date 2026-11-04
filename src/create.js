@@ -8,7 +8,8 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { db, now, feePct } from './db.js';
+import { db, now } from './db.js';
+import { ownerLimits } from './plan-limits.js';
 import { requireUser, limitHits } from './auth.js';
 import { h } from './render.js';
 import { won } from './plan-data.js';
@@ -89,7 +90,7 @@ creator.param('cid', async (req, res, next, id) => {
 creator.get('/create/:cid', async (req, res) => {
   const c = req.course, t = req.t;
   const items = await db.prepare('SELECT id,title,kind,file,file_name,size FROM course_items WHERE course_id=? ORDER BY pos,id').all(c.id);
-  const data = { id: c.id, kind: c.kind, title: c.title, summary: c.summary, description: c.description, thumbnail: c.thumbnail, pricing: c.pricing, price: c.price, status: c.status, items, fee: feePct(),
+  const data = { id: c.id, kind: c.kind, title: c.title, summary: c.summary, description: c.description, thumbnail: c.thumbnail, pricing: c.pricing, price: c.price, status: c.status, items, fee: (await ownerLimits(c.owner_id)).feePct,
     limits: { min: MIN_PRICE, max: MAX_PRICE }, types: Object.fromEntries(Object.entries(FILE_TYPES).map(([e, v]) => [e, v[0]])) };
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   res.page(c.title || t('새 콘텐츠'), `${CSS}

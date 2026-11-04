@@ -8,7 +8,7 @@ import { landingPage, homeSections } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
 import { cancelRebill } from './payapp.js';
-import { ownerLimits } from './plan-limits.js';
+import { ownerLimits, subscriberRoom, notifySubscriberLimit } from './plan-limits.js';
 import { renderPost, h, personalize } from './render.js';
 import { page, fmt, platformFooter } from './views.js';
 import { tr } from './i18n.js';
@@ -409,6 +409,10 @@ pub.post('/n/:slug/subscribe', async (req, res) => {
 
   let sub = await db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? AND email=?').get(nl.id, addr);
   if (sub?.status === 'active') return back(t('이미 구독 중입니다.'));
+  if ((await subscriberRoom(nl.owner_id)) <= 0) { // 요금제의 구독자 한도: 신청자에게는 사정만 알리고 소유자에게 안내한다
+    await notifySubscriberLimit(nl.owner_id);
+    return back(t('이 뉴스레터는 지금 새 구독을 받을 수 없습니다. 나중에 다시 시도해 주세요.'));
+  }
   if (sub) await db.prepare("UPDATE subscribers SET status='pending', name=COALESCE(NULLIF(?,''),name), unsub_at=NULL WHERE id=?").run(name, sub.id);
   else {
     const referrer = req.body.ref && await db.prepare('SELECT id FROM subscribers WHERE ref_code=? AND newsletter_id=?').get(String(req.body.ref).slice(0, 20), nl.id);
@@ -436,6 +440,13 @@ pub.get('/confirm/:token', async (req, res) => {
   const sub = await db.prepare('SELECT s.*, n.slug, n.name AS nl_name FROM subscribers s JOIN newsletters n ON n.id=s.newsletter_id WHERE s.token=?').get(req.params.token);
   if (!sub) return res.status(404).page(req.t('확인 실패'), `<p>${req.t('유효하지 않은 링크입니다.')}</p>`);
   const first = sub.status !== 'active' && !sub.confirmed_at; // 최초 확정일 때만 자동화 시작
+  if (sub.status !== 'active') { // 신청과 확인 사이에 한도가 찼을 수 있다: 대기 상태로 두어 나중에 같은 링크로 확정할 수 있게 한다
+    const owner = (await db.prepare('SELECT owner_id FROM newsletters WHERE id=?').get(sub.newsletter_id)).owner_id;
+    if ((await subscriberRoom(owner)) <= 0) {
+      await notifySubscriberLimit(owner);
+      return res.page(req.t('구독 확인'), `<h1>${req.t('지금은 구독을 완료할 수 없습니다')}</h1><p>${req.t('이 뉴스레터는 지금 새 구독을 받을 수 없습니다. 나중에 다시 시도해 주세요.')}</p>`);
+    }
+  }
   await db.prepare("UPDATE subscribers SET status='active', confirmed_at=COALESCE(confirmed_at,?), unsub_at=NULL WHERE id=?").run(now(), sub.id);
   if (first) await enrollSubscriber(sub);
   const nl = await db.prepare('SELECT * FROM newsletters WHERE id=?').get(sub.newsletter_id);

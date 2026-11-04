@@ -3,7 +3,7 @@ import express from 'express';
 import { randomBytes } from 'node:crypto';
 import { saveImage, isOwnImageUrl } from './storage.js';
 import { db, now, isPaid, cleanTags } from './db.js';
-import { ownerLimits, monthlySent, graceUntil, upsell } from './plan-limits.js';
+import { ownerLimits, monthlySent, graceUntil, upsell, subscriberCount, subscriberRoom, notifySubscriberLimit, usageNotice } from './plan-limits.js';
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
 import { smtpConfigured } from './mail.js';
@@ -177,12 +177,13 @@ dash.get('/app/n/:nid', async (req, res) => {
   const checklist = todo ? `<h2>시작하기 · ${steps.length - todo}/${steps.length}</h2><div class="card"><ul class="check">${steps.map(([label, done, href]) =>
     `<li class="${done ? 'done' : ''}"><span class="dot"></span>${done || label === '이메일 인증' ? label : `<a href="${href}">${label}</a>`}${!done && label === '이메일 인증' ? ' <span class="mute">— 메일함의 인증 링크를 눌러주세요</span>' : ''}</li>`).join('')}</ul></div>` : '';
   const lim = await ownerLimits(nl.owner_id);
-  res.page(nl.name, `<h1>대시보드</h1>${lim.grace ? `<div class="msg">${new Date(graceUntil()).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}부터 플랜별 기능 제한이 적용됩니다. 지금 쓰는 기능을 계속 쓰려면 <a href="/pricing">요금제</a>를 확인해 주세요.</div>` : ''}${checklist}
+  res.page(nl.name, `<h1>대시보드</h1>${lim.grace ? `<div class="msg">${new Date(graceUntil()).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}부터 플랜별 기능 제한이 적용됩니다. 지금 쓰는 기능을 계속 쓰려면 <a href="/pricing">요금제</a>를 확인해 주세요.</div>` : ''}${await usageNotice(nl.owner_id)}${checklist}
 ${smtpConfigured() ? '' : '<div class="msg">SMTP가 설정되지 않아 메일은 <code>outbox/</code> 폴더에 파일로 저장됩니다. 실제 발송은 <code>.env</code>에 SMTP 정보를 입력하세요.</div>'}
 <div class="stats"><div class="stat"><b>${await c('active')}</b>구독자</div><div class="stat"><b>${t.sent}</b>총 발송량</div>
 <div class="stat"><b>${pct(t.opened, t.sent)}</b>열람률</div><div class="stat"><b>${pct(clicked, t.sent)}</b>클릭률</div>
 <div class="stat"><b>${await c('pending')}</b>확인 대기</div><div class="stat"><b>${await c('unsubscribed')}</b>해지</div>
-<div class="stat"><b>${Math.max(0, lim.monthly - await monthlySent(nl.owner_id)).toLocaleString('ko-KR')}</b>이번 달 남은 발송량 (한도 ${lim.monthly.toLocaleString('ko-KR')})</div></div>
+<div class="stat"><b>${Math.max(0, lim.monthly - await monthlySent(nl.owner_id)).toLocaleString('ko-KR')}</b>이번 달 남은 발송량 (한도 ${lim.monthly.toLocaleString('ko-KR')})</div>
+<div class="stat"><b>${(await subscriberCount(nl.owner_id)).toLocaleString('ko-KR')}</b>계정 전체 구독자 (한도 ${lim.subscribers === null ? '무제한' : lim.subscribers.toLocaleString('ko-KR')}) · <a href="/billing">요금제 관리</a></div></div>
 <h2>최근 30일 신규 구독</h2><div class="card"><div class="bars">${days.map(([d, n]) => `<i title="${d}: ${n}명" style="height:${Math.max(3, (n / max) * 100)}%"></i>`).join('')}</div></div>
 <h2>웹 방문 · 최근 30일</h2>
 <div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자 (하루 단위 고유)</div>
@@ -231,7 +232,7 @@ dash.get('/app/n/:nid/traffic', async (req, res) => {
   const [ts, vs, sg] = await Promise.all([trafficStats(nl.id, days), viewStats(nl.id, days), subGrowth(nl.id, days)]);
   const p = (n) => (ts.total ? Math.round((n / ts.total) * 1000) / 10 : 0);
   const bar = (n, color) => `<div style="height:8px;border-radius:4px;background:#EEF2F6;min-width:120px"><div style="height:8px;border-radius:4px;background:${color};width:${p(n)}%"></div></div>`;
-  res.page('유입 분석', `<div class="row"><h1 class="grow">유입 분석</h1>${[7, 30, 90].map((d) => `<a class="btn sm${d === days ? ' primary' : ''}" href="?days=${d}">${d}일</a>`).join('')}</div>
+  res.page('유입 분석', `<div class="row"><h1 class="grow">유입 분석</h1><a class="btn sm" href="/app/n/${nl.id}/insights">고급 통계</a>${[7, 30, 90].map((d) => `<a class="btn sm${d === days ? ' primary' : ''}" href="?days=${d}">${d}일</a>`).join('')}</div>
 <p class="mute">최근 ${days}일 동안 공개 페이지·글을 연 방문이 어떤 경로로 들어왔는지 보여줘요.</p>
 <div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자</div>
 ${[...ts.channels].sort((a, b) => b.n - a.n).filter((c) => c.n).slice(0, 2).map((c) => `<div class="stat"><b>${p(c.n)}%</b>${c.name}</div>`).join('')}</div>
@@ -245,6 +246,43 @@ ${[...ts.channels].sort((a, b) => b.n - a.n).filter((c) => c.n).slice(0, 2).map(
 <div class="card"><b>인스타그램·카카오톡 등 앱 링크</b><p class="mute" style="margin:6px 0 0">앱에서 연 링크는 출처가 안 남는 경우가 많아요. 공유할 링크 뒤에 <code>?utm_source=instagram</code> 처럼 붙이면 해당 채널로 집계됩니다. (instagram, kakao, facebook, twitter, youtube, threads, newsletter)</p></div>
 <p class="mute">검색 로봇·미리보기 봇과 발행자 본인의 조회는 제외하고, 같은 사람이 30분 안에 다시 열어도 한 번만 세요.</p>`,
   { nl, active: 'traffic', wide: true });
+});
+
+// 고급 통계(Business): 월별 구독자 증감·해지율과 매출을 함께 보고 CSV로 내려받는다
+async function insights(nlId) {
+  const subs = await db.prepare("SELECT substr(created_at,1,7) c, substr(unsub_at,1,7) u, status, tier, paid_until, source FROM subscribers WHERE newsletter_id=? AND status!='pending'").all(nlId);
+  const pays = await db.prepare('SELECT substr(created_at,1,7) m, COUNT(*) n, SUM(amount) g, SUM(fee) f, SUM(pg_fee) pg FROM payments WHERE newsletter_id=? GROUP BY substr(created_at,1,7)').all(nlId);
+  const base = new Date(), months = [];
+  for (let i = 11; i >= 0; i--) months.push(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+  const at = (m) => subs.filter((s) => s.c <= m && !(s.u && s.u <= m)).length;
+  const rows = months.map((m, i) => {
+    const prev = at(i ? months[i - 1] : new Date(Date.UTC(+m.slice(0, 4), +m.slice(5) - 2, 1)).toISOString().slice(0, 7));
+    const joined = subs.filter((s) => s.c === m).length, left = subs.filter((s) => s.u === m).length, p = pays.find((x) => x.m === m) || { n: 0, g: 0, f: 0, pg: 0 };
+    return { m, joined, left, net: joined - left, end: at(m), churn: prev ? Math.round((left / prev) * 1000) / 10 : 0, payments: p.n, gross: p.g, fee: p.f, pg: p.pg, settle: p.g - p.f - p.pg };
+  });
+  const active = subs.filter((s) => s.status === 'active'), paid = active.filter(isPaid).length;
+  const sources = Object.entries(active.reduce((a, s) => ({ ...a, [s.source || 'web']: (a[s.source || 'web'] || 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
+  return { rows, active: active.length, paid, sources };
+}
+const SOURCE = { web: '구독 폼', admin: '직접 추가', import: 'CSV 가져오기', api: 'API' };
+dash.get('/app/n/:nid/insights', async (req, res) => {
+  const nl = req.nl;
+  if ((await ownerLimits(nl.owner_id)).stats < 3) return res.page('고급 통계', `<h1>고급 통계</h1>${upsell('Business 플랜에서 쓸 수 있어요', '월별 구독자 증감과 해지율, 매출, 유입 경로별 구독자를 함께 보고 CSV로 내려받을 수 있습니다.')}`, { nl, active: 'traffic', wide: true });
+  const I = await insights(nl.id), last3 = I.rows.slice(-3), now3 = I.rows[I.rows.length - 1];
+  res.page('고급 통계', `<div class="row"><h1 class="grow">고급 통계</h1><a class="btn sm" href="/app/n/${nl.id}/traffic">유입 분석</a><a class="btn sm" href="/app/n/${nl.id}/insights.csv">CSV 내려받기</a></div>
+<div class="stats"><div class="stat"><b>${I.active.toLocaleString('ko-KR')}</b>활성 구독자</div><div class="stat"><b>${pct(I.paid, I.active)}</b>유료 전환율 (${I.paid}명)</div>
+<div class="stat"><b>${Math.round((last3.reduce((a, r) => a + r.churn, 0) / 3) * 10) / 10}%</b>최근 3개월 평균 해지율</div>
+<div class="stat"><b>₩${(I.active ? Math.round(now3.gross / I.active) : 0).toLocaleString('ko-KR')}</b>이번 달 구독자당 매출</div></div>
+<h2>월별 현황 · 최근 12개월</h2><div class="card" style="overflow-x:auto"><table><tr><th>월</th><th>신규</th><th>해지</th><th>순증</th><th>월말 구독자</th><th>해지율</th><th>결제</th><th>총매출</th><th>예상 정산금액</th></tr>
+${[...I.rows].reverse().map((r) => `<tr><td>${r.m}</td><td>${r.joined}</td><td>${r.left}</td><td>${r.net > 0 ? '+' : ''}${r.net}</td><td>${r.end}</td><td>${r.churn}%</td><td>${r.payments}</td><td>₩${r.gross.toLocaleString('ko-KR')}</td><td><b>₩${r.settle.toLocaleString('ko-KR')}</b></td></tr>`).join('')}</table></div>
+<h2>유입 경로별 활성 구독자</h2><div class="card"><table>${I.sources.map(([s, n]) => `<tr><td>${h(SOURCE[s] || s)}</td><td style="text-align:right">${n}명</td></tr>`).join('') || '<tr><td class="mute">아직 구독자가 없습니다.</td></tr>'}</table></div>
+<p class="mute">해지율은 그 달 해지한 구독자를 전월 말 구독자로 나눈 값입니다. 월은 UTC 기준으로 묶입니다.</p>`, { nl, active: 'traffic', wide: true });
+});
+dash.get('/app/n/:nid/insights.csv', async (req, res) => {
+  if ((await ownerLimits(req.nl.owner_id)).stats < 3) return res.redirect(`/app/n/${req.nl.id}/insights`);
+  const I = await insights(req.nl.id);
+  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=insights.csv' })
+    .send('\uFEFFmonth,new,unsubscribed,net,end_subscribers,churn_pct,payments,gross,platform_fee,payment_fee,estimated_settlement\n' + I.rows.map((r) => [r.m, r.joined, r.left, r.net, r.end, r.churn, r.payments, r.gross, r.fee, r.pg, r.settle].join(',')).join('\n'));
 });
 
 dash.get('/app/n/:nid/posts/:id/stats', async (req, res) => {
@@ -271,16 +309,28 @@ dash.get('/app/n/:nid/posts/:id/stats', async (req, res) => {
 // ---------- 구독자 ----------
 dash.get('/app/n/:nid/subscribers', async (req, res) => {
   const nl = req.nl;
-  const { q = '', status = '' } = req.query;
+  const { q = '', status = '' } = req.query, lim = await ownerLimits(nl.owner_id), gid = Number(req.query.group) || 0;
   let rows = await db.prepare('SELECT * FROM subscribers WHERE newsletter_id=? ORDER BY id DESC').all(nl.id);
+  const groups = lim.groups ? await db.prepare('SELECT g.id, g.name, COUNT(m.id) n FROM subscriber_groups g LEFT JOIN subscriber_group_members m ON m.group_id=g.id WHERE g.newsletter_id=? GROUP BY g.id, g.name ORDER BY g.name').all(nl.id) : [];
+  const members = lim.groups ? await db.prepare('SELECT m.group_id, m.subscriber_id FROM subscriber_group_members m JOIN subscriber_groups g ON g.id=m.group_id WHERE g.newsletter_id=?').all(nl.id) : [];
+  const groupsOf = (sid) => members.filter((m) => m.subscriber_id === sid).map((m) => groups.find((g) => g.id === m.group_id)?.name).filter(Boolean);
+  if (gid) rows = rows.filter((s) => members.some((m) => m.group_id === gid && m.subscriber_id === s.id));
   if (q) rows = rows.filter((s) => (s.email + s.name).toLowerCase().includes(String(q).toLowerCase()));
   if (status) rows = rows.filter((s) => s.status === status);
-  res.page('구독자', `<h1>구독자 <span class="mute">${rows.length}명</span></h1>
+  const base = `/app/n/${nl.id}/subscribers`;
+  const groupCard = lim.groups ? `<div class="card"><div class="row"><b class="grow">구독자 그룹</b><form class="row nowrap" method="post" action="${base}/groups"><input name="name" required maxlength="40" placeholder="새 그룹 이름" style="width:180px"><button class="sm">만들기</button></form></div>
+<div class="chips" style="margin:12px 0 0"><a class="chip${gid ? '' : ' on'}" href="${base}">전체</a>${groups.map((g) => `<a class="chip${gid === g.id ? ' on' : ''}" href="?group=${g.id}">${h(g.name)} ${g.n}</a>`).join('')}</div>
+${gid ? `<form method="post" action="${base}/groups/${gid}/delete" style="margin:10px 0 0" onsubmit="return confirm('그룹을 삭제할까요? 구독자는 그대로 남습니다.')"><button class="sm danger">이 그룹 삭제</button></form>` : ''}
+<p class="mute" style="margin:10px 0 0">글 작성 화면의 발송 대상에서 그룹을 고르면 그 그룹에게만 보낼 수 있어요.</p></div>
+${groups.length ? `<form id="grpf" class="row" method="post" action="${base}/groups/assign" style="margin:10px 0"><select name="group_id" style="width:auto" aria-label="그룹">${groups.map((g) => `<option value="${g.id}"${gid === g.id ? ' selected' : ''}>${h(g.name)}</option>`).join('')}</select><button class="sm" name="op" value="add">선택한 구독자 추가</button><button class="sm" name="op" value="remove">선택한 구독자 빼기</button></form>` : ''}`
+    : upsell('구독자 그룹은 Pro 플랜부터 쓸 수 있어요', '구독자를 그룹으로 나눠 관리하고, 원하는 그룹에게만 글을 보낼 수 있습니다.');
+  res.page('구독자', `<h1>구독자 <span class="mute">${rows.length}명</span></h1>${await usageNotice(nl.owner_id)}
+${groupCard}
 <form class="row" method="get"><input class="grow" name="q" placeholder="이메일/이름 검색" value="${h(q)}">
 <select name="status" style="width:auto"><option value="">전체 상태</option>${['active', 'pending', 'unsubscribed'].map((s) => `<option ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
 <button>검색</button><a class="btn" href="/app/n/${nl.id}/subscribers/export.csv">CSV 내보내기</a></form>
-<div class="card"><table><tr><th>이메일</th><th>이름</th><th>상태</th><th>등급</th><th>가입</th><th></th></tr>
-${rows.slice(0, 500).map((s) => `<tr><td>${h(s.email)}</td><td>${h(s.name)}</td><td><span class="badge ${s.status}">${s.status}</span></td>
+<div class="card" style="overflow-x:auto"><table><tr>${groups.length ? '<th style="width:28px"><input type="checkbox" id="selall" aria-label="전체 선택"></th>' : ''}<th>이메일</th><th>이름</th>${lim.groups ? '<th>그룹</th>' : ''}<th>상태</th><th>등급</th><th>가입</th><th></th></tr>
+${rows.slice(0, 500).map((s) => `<tr>${groups.length ? `<td><input type="checkbox" class="selsub" form="grpf" name="ids" value="${s.id}" aria-label="선택"></td>` : ''}<td>${h(s.email)}</td><td>${h(s.name)}</td>${lim.groups ? `<td class="mute">${groupsOf(s.id).map(h).join(', ')}</td>` : ''}<td><span class="badge ${s.status}">${s.status}</span></td>
 <td>${isPaid(s) ? `<span class="badge active">유료${s.stripe_sub || s.plan ? '' : '(지정)'}</span>` : '무료'}
 <form method="post" action="/app/n/${nl.id}/subscribers/${s.id}/tier" style="display:inline"><button class="sm" title="결제 없이 유료 혜택을 주거나 회수합니다">${isPaid(s) ? '해제' : '유료 지정'}</button></form></td>
 <td class="mute">${fmt(s.created_at)}</td><td><form method="post" action="/app/n/${nl.id}/subscribers/${s.id}/delete" style="margin:0" onsubmit="return confirm('삭제할까요?')"><button class="sm danger">삭제</button></form></td></tr>`).join('')}</table>
@@ -292,6 +342,7 @@ ${rows.length > 500 ? '<p class="mute">상위 500명만 표시됩니다. 검색�
 <label>또는 엑셀·구글 시트에서 복사해 붙여넣기 (한 줄에 한 명)</label><textarea name="csv" id="csvtext" rows="5" placeholder="a@example.com,홍길동"></textarea>
 <p class="mute" id="csvsum">이메일 열은 자동으로 찾고, 머리글 줄(이메일, 이름)과 쉼표·탭·세미콜론 구분을 모두 인식합니다. <a href="data:text/csv;charset=utf-8,%EF%BB%BFemail,name%0Aa@example.com,%ED%99%8D%EA%B8%B8%EB%8F%99" download="subscribers-sample.csv">샘플 파일</a></p>
 <p class="mute">구독 동의를 받은 사람만 가져오세요. 바로 활성 상태가 됩니다.</p><p><button class="primary" id="csvgo">가져오기</button></p></form></div>
+<script>(function(){var a=document.getElementById('selall');if(a)a.onchange=function(){document.querySelectorAll('.selsub').forEach(function(c){c.checked=a.checked})}})()</script>
 <script>(function(){var t=document.getElementById('csvtext'),s=document.getElementById('csvsum'),d=document.getElementById('csvdrop'),f=document.getElementById('csvfile'),base=s.innerHTML;
 function sum(){var m=t.value.match(/[^\\s@,;"]+@[^\\s@,;"]+\\.[^\\s@,;"]+/g);s.innerHTML=m?'이메일 <b>'+new Set(m.map(function(x){return x.toLowerCase()})).size+'</b>개를 찾았습니다. 아래 버튼을 누르면 가져옵니다.':base}
 function load(file){if(!file)return;if(file.size>1.5e6){alert('1.5MB 이하 파일만 가능합니다. 나눠서 올려 주세요.');return}
@@ -312,16 +363,60 @@ dash.get('/app/n/:nid/subscribers/export.csv', async (req, res) => {
 const addSub = async (nid, email, name, source) =>
   (await db.prepare("INSERT OR IGNORE INTO subscribers(newsletter_id,email,name,status,token,source,created_at,confirmed_at) VALUES(?,?,?,'active',?,?,?,?)")
     .run(nid, email, name, randomBytes(18).toString('base64url'), source, now(), now())).changes;
+// 구독자 그룹 (Pro 이상). 플랜이 끝나도 그룹 데이터는 지우지 않고 화면에서만 숨긴다
+const groupsAllowed = async (req, res) => {
+  if ((await ownerLimits(req.nl.owner_id)).groups) return true;
+  back(res, `/app/n/${req.nl.id}/subscribers`, '구독자 그룹은 Pro 플랜부터 쓸 수 있습니다.');
+  return false;
+};
+dash.post('/app/n/:nid/subscribers/groups', async (req, res) => {
+  if (!(await groupsAllowed(req, res))) return;
+  const name = String(req.body.name || '').trim().slice(0, 40), to = `/app/n/${req.nl.id}/subscribers`;
+  if (!name) return back(res, to, '그룹 이름을 입력해 주세요.');
+  if ((await db.prepare('SELECT COUNT(*) n FROM subscriber_groups WHERE newsletter_id=?').get(req.nl.id)).n >= 50) return back(res, to, '그룹은 50개까지 만들 수 있습니다.');
+  const added = (await db.prepare('INSERT OR IGNORE INTO subscriber_groups(newsletter_id,name,created_at) VALUES(?,?,?)').run(req.nl.id, name, now())).changes;
+  back(res, to, added ? '그룹을 만들었습니다.' : '같은 이름의 그룹이 있습니다.');
+});
+dash.post('/app/n/:nid/subscribers/groups/assign', async (req, res) => {
+  if (!(await groupsAllowed(req, res))) return;
+  const to = `/app/n/${req.nl.id}/subscribers`, ids = [req.body.ids ?? []].flat().map(Number).filter(Number.isInteger).slice(0, 500);
+  const g = await db.prepare('SELECT id FROM subscriber_groups WHERE id=? AND newsletter_id=?').get(req.body.group_id, req.nl.id);
+  if (!g || !ids.length) return back(res, to, '그룹과 구독자를 선택해 주세요.');
+  let n = 0;
+  for (const id of ids) {
+    if (!(await db.prepare('SELECT id FROM subscribers WHERE id=? AND newsletter_id=?').get(id, req.nl.id))) continue;
+    n += req.body.op === 'remove'
+      ? (await db.prepare('DELETE FROM subscriber_group_members WHERE group_id=? AND subscriber_id=?').run(g.id, id)).changes
+      : (await db.prepare('INSERT OR IGNORE INTO subscriber_group_members(group_id,subscriber_id) VALUES(?,?)').run(g.id, id)).changes;
+  }
+  back(res, `${to}?group=${g.id}`, `${n}명을 ${req.body.op === 'remove' ? '그룹에서 뺐습니다' : '그룹에 추가했습니다'}.`);
+});
+dash.post('/app/n/:nid/subscribers/groups/:gid/delete', async (req, res) => {
+  const to = `/app/n/${req.nl.id}/subscribers`;
+  // 지우면 이 그룹에 보내려던 글이 전체 발송으로 바뀔 수 있으므로 먼저 대상을 바꾸게 한다
+  if ((await db.prepare("SELECT 1 FROM posts WHERE group_id=? AND newsletter_id=? AND status IN ('draft','scheduled','sending') LIMIT 1").get(req.params.gid, req.nl.id))) return back(res, `${to}?group=${req.params.gid}`, '이 그룹을 대상으로 한 초안이나 예약 글이 있어 삭제할 수 없습니다. 글의 발송 대상을 먼저 바꿔 주세요.');
+  await db.prepare('DELETE FROM subscriber_groups WHERE id=? AND newsletter_id=?').run(req.params.gid, req.nl.id);
+  back(res, to, '그룹을 삭제했습니다.');
+});
 dash.post('/app/n/:nid/subscribers/add', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return back(res, `/app/n/${req.nl.id}/subscribers`, '이메일 형식 오류');
+  if ((await subscriberRoom(req.nl.owner_id)) <= 0) {
+    await notifySubscriberLimit(req.nl.owner_id);
+    return back(res, `/app/n/${req.nl.id}/subscribers`, '요금제의 구독자 한도에 도달해 추가할 수 없습니다. 상위 요금제로 올리면 더 받을 수 있어요.');
+  }
   back(res, `/app/n/${req.nl.id}/subscribers`, await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
 });
 dash.post('/app/n/:nid/subscribers/import', async (req, res) => {
   const { rows, invalid, dup } = parseSubscribers(req.body.csv);
-  let added = 0;
-  for (const r of rows) added += await addSub(req.nl.id, r.email, r.name, 'import');
-  const skip = [rows.length - added && `이미 있는 ${rows.length - added}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
+  let added = 0, over = 0, room = await subscriberRoom(req.nl.owner_id);
+  for (const r of rows) {
+    if (room <= 0) { over++; continue; }
+    const a = await addSub(req.nl.id, r.email, r.name, 'import');
+    added += a; room -= a;
+  }
+  if (over) await notifySubscriberLimit(req.nl.owner_id);
+  const skip = [over && `구독자 한도 초과 ${over}명 (상위 요금제로 올리면 더 받을 수 있어요)`, rows.length - added - over && `이미 있는 ${rows.length - added - over}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
   back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.${skip.length ? ` (건너뜀: ${skip.join(', ')})` : ''}`);
 });
 // 결제 없이 유료 혜택 지정/해제 (후원자·지인 등). 결제 중인 구독자는 해제하지 않는다

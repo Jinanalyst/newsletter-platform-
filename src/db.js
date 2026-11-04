@@ -4,7 +4,7 @@
 // 기존 코드와 같은 모양(db.prepare(sql).get/all/run)을 유지하되 모두 Promise 를 돌려준다.
 import pg from 'pg';
 
-const SCHEMA_VERSION = 17; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
+const SCHEMA_VERSION = 18; // 컬럼을 추가하면 올려야 기존 DB 에도 스키마가 적용된다
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -332,6 +332,40 @@ CREATE TABLE IF NOT EXISTS team_messages (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tmsg_nl ON team_messages(newsletter_id, id);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_pct NUMERIC;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS creator_plan TEXT NOT NULL DEFAULT '';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS pg_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE course_sales ADD COLUMN IF NOT EXISTS fee_pct NUMERIC;
+ALTER TABLE course_sales ADD COLUMN IF NOT EXISTS pg_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_notice_month TEXT NOT NULL DEFAULT '';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS group_id INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS subscriber_groups (
+  id SERIAL PRIMARY KEY,
+  newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (newsletter_id, name)
+);
+CREATE TABLE IF NOT EXISTS subscriber_group_members (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES subscriber_groups(id) ON DELETE CASCADE,
+  subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+  UNIQUE (group_id, subscriber_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sgm_sub ON subscriber_group_members(subscriber_id);
+CREATE TABLE IF NOT EXISTS payment_events (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  state TEXT NOT NULL,
+  ref TEXT NOT NULL DEFAULT '',
+  user_id INTEGER,
+  newsletter_id INTEGER,
+  amount INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  UNIQUE (kind, state, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_pevent_user ON payment_events(user_id, id);
 `;
 
 // ---------- 드라이버 ----------
@@ -451,7 +485,6 @@ export const db = {
 // ---------- 공통 도우미 ----------
 export const isPaid = (s) => !!s && s.tier === 'paid' && (!s.paid_until || s.paid_until > new Date().toISOString());
 export const hasPaid = (nl) => nl.price_monthly > 0 || nl.price_yearly > 0;
-export const feePct = () => Math.min(50, Math.max(0, Number(process.env.PLATFORM_FEE_PCT ?? 10)));
 export const now = () => new Date().toISOString();
 
 export const baseUrl = () => {

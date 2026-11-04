@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { db, now, baseUrl, isPaid, hasPaid, feePct } from './db.js';
+import { db, now, baseUrl, isPaid, hasPaid } from './db.js';
 import { sendMail } from './mail.js';
 import { h } from './render.js';
 import { page } from './views.js';
-import { payappConfigured, startCheckout, cancelRebill, renewable, MIN_PRICE } from './payapp.js';
+import { contentPayapp, logPayment, startCheckout, cancelRebill, renewable, MIN_PRICE } from './payapp.js';
+import { saleFees } from './plan-limits.js';
 
 export const billing = Router();
 export const stripeConfigured = () => !!process.env.STRIPE_SECRET_KEY;
@@ -50,14 +51,14 @@ billing.get('/n/:slug/upgrade', async (req, res) => {
 <form class="card" method="post" action="/n/${h(nl.slug)}/upgrade/link"><label>${t('이메일')}</label><input type="email" name="email" required>
 <p><button class="primary">${t('링크 받기')}</button></p></form><p class="mute">${t('아직 구독 전이라면 먼저 {a}해 주세요.', { a: `<a href="/n/${h(nl.slug)}">${t('무료로 구독')}</a>` })}</p>${back}`, { msg: req.query.m });
   }
-  const renewing = isPaid(sub) && payappConfigured() && renewable(sub) && nl.price_yearly >= MIN_PRICE;
+  const renewing = isPaid(sub) && contentPayapp() && renewable(sub) && nl.price_yearly >= MIN_PRICE;
   if (isPaid(sub) && !renewing) {
     return res.page(t('유료 구독'), `<h1>${t('유료 구독 중입니다')}</h1>
 <p class="mute">${sub.paid_until ? t('이용 기간: {d}까지', { d: new Date(sub.paid_until).toLocaleDateString(loc) }) : t('발행자가 유료 혜택을 제공했습니다.')}</p>
 ${sub.payapp_rebill_no ? `<p>${t('매월 자동 결제 중입니다.')}</p><form method="post" action="/n/${h(nl.slug)}/billing/cancel" onsubmit="return confirm('${t('자동 결제를 해지할까요? 이미 결제한 기간까지는 계속 이용할 수 있습니다.')}')"><input type="hidden" name="t" value="${h(sub.token)}"><button>${t('자동 결제 해지')}</button></form>` : ''}
 ${sub.stripe_customer && stripeConfigured() ? `<form method="post" action="/n/${h(nl.slug)}/billing"><input type="hidden" name="t" value="${h(sub.token)}"><button>${t('결제 관리 / 해지')}</button></form>` : ''}${back}`);
   }
-  if (payappConfigured()) {
+  if (contentPayapp()) {
     const option = (p, price, label, note, desc) => price >= MIN_PRICE ? `<p style="margin-top:18px"><b>${label}</b> <span style="font-size:22px">${won(price)}</span> <span class="mute">${note}</span><br><span class="mute">${desc}</span></p>
 <p><button class="primary" name="plan" value="${p}">${t('{label}으로 구독', { label })}</button></p>` : '';
     return res.page(t('유료 구독'), `<h1>${renewing ? t('연간 구독 연장') : t('{name} 유료 구독', { name: h(nl.name) })}</h1>
@@ -72,7 +73,7 @@ ${option('yearly', nl.price_yearly, t('연간'), '/ ' + t('년'), t('1년치를 
 <input type="hidden" name="plan" value="${p}"><b>${label}</b> <span style="font-size:22px">${won(price)}</span> <span class="mute">${note}</span>
 <p><button class="primary" ${stripeConfigured() ? '' : 'disabled'}>${t('{label}으로 구독', { label })}</button></p></form>` : '';
   res.page(t('유료 구독'), `<h1>${t('{name} 유료 구독', { name: h(nl.name) })}</h1><p>${t('유료 구독자 전용 글을 읽고, 발행자를 직접 응원할 수 있습니다.')}</p>
-${stripeConfigured() ? '' : `<div class="msg">${t('결제 시스템이 아직 연결되지 않았습니다.')} (STRIPE_SECRET_KEY)</div>`}
+${stripeConfigured() ? '' : `<div class="msg">${t('결제 시스템이 아직 연결되지 않았습니다.')}</div>`}
 ${plan('monthly', nl.price_monthly, t('월간'), '/ ' + t('월'))}${plan('yearly', nl.price_yearly, t('연간'), '/ ' + t('년'))}${back}`, { msg: req.query.m });
 });
 
@@ -93,7 +94,7 @@ billing.post('/n/:slug/checkout', async (req, res) => {
   const plan = req.body.plan === 'yearly' ? 'yearly' : 'monthly';
   const price = plan === 'yearly' ? nl.price_yearly : nl.price_monthly;
   const fail = (m) => res.redirect(`/n/${nl.slug}/upgrade?t=${encodeURIComponent(req.body.t || '')}&m=` + encodeURIComponent(m));
-  if (payappConfigured()) {
+  if (contentPayapp()) {
     if (!sub || !(price >= MIN_PRICE)) return fail('결제를 시작할 수 없습니다.');
     if (isPaid(sub) && !(plan === 'yearly' && renewable(sub))) return fail('이미 유료 구독 중입니다.');
     const phone = String(req.body.phone || '').replace(/\D/g, '');
@@ -105,7 +106,7 @@ billing.post('/n/:slug/checkout', async (req, res) => {
   }
   if (!sub || !price || !stripeConfigured()) return fail('결제를 시작할 수 없습니다.');
   try {
-    const base = baseUrl();
+    const base = baseUrl(), rate = (await saleFees(nl.owner_id, price)).fee_pct;
     const s = await stripe('checkout/sessions', {
       mode: 'subscription',
       client_reference_id: sub.id,
@@ -118,7 +119,7 @@ billing.post('/n/:slug/checkout', async (req, res) => {
       subscription_data: {
         metadata: { subscriber_id: sub.id, newsletter_id: nl.id, plan },
         // 발행자가 Stripe Connect 계정을 연결했다면 수수료를 떼고 자동 정산
-        application_fee_percent: nl.stripe_account ? feePct() : undefined,
+        application_fee_percent: nl.stripe_account ? rate : undefined,
         transfer_data: nl.stripe_account ? { destination: nl.stripe_account } : undefined,
       },
       success_url: `${base}/n/${nl.slug}/upgrade/done`,
@@ -189,8 +190,10 @@ export async function handleEvent(ev) {
     const until = plusDays(end ? new Date(end * 1000).toISOString() : now(), 3); // 갱신 지연 대비 3일 유예
     await db.prepare("UPDATE subscribers SET tier='paid', paid_until=?, stripe_sub=COALESCE(NULLIF(?,''),stripe_sub), stripe_customer=COALESCE(NULLIF(?,''),stripe_customer) WHERE id=?")
       .run(until, subId || '', o.customer || '', sub.id);
-    await db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?)')
-      .run(sub.newsletter_id, sub.id, o.id, meta.plan || sub.plan, o.amount_paid, Math.round((o.amount_paid * feePct()) / 100), o.currency || CURRENCY, now());
+    const nl = await db.prepare('SELECT owner_id FROM newsletters WHERE id=?').get(sub.newsletter_id), fees = await saleFees(nl.owner_id, o.amount_paid);
+    await db.prepare('INSERT OR IGNORE INTO payments(newsletter_id,subscriber_id,invoice_id,plan,amount,fee,fee_pct,creator_plan,pg_fee,currency,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+      .run(sub.newsletter_id, sub.id, o.id, meta.plan || sub.plan, o.amount_paid, o.application_fee_amount ?? fees.fee, fees.fee_pct, fees.creator_plan, fees.pg_fee, o.currency || CURRENCY, now());
+    await logPayment({ kind: 'content', state: 'paid', ref: o.id, userId: nl.owner_id, newsletterId: sub.newsletter_id, amount: o.amount_paid });
   } else if (ev.type === 'customer.subscription.deleted') {
     // 즉시 끊지 않고 이미 낸 기간(paid_until)까지는 유지
     await db.prepare("UPDATE subscribers SET stripe_sub='', plan='' WHERE stripe_sub=?").run(o.id);
