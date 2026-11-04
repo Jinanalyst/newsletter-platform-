@@ -8,6 +8,7 @@ import { landingPage, homeSections } from './landing.js';
 import { won } from './billing.js';
 import { sendMail } from './mail.js';
 import { cancelRebill } from './payapp.js';
+import { ownerLimits } from './plan-limits.js';
 import { renderPost, h, personalize } from './render.js';
 import { page, fmt, platformFooter } from './views.js';
 import { tr } from './i18n.js';
@@ -192,6 +193,7 @@ pub.get('/n/:slug', async (req, res) => {
   const hiddenIds = new Set(lay.hidden);
   const isOwner = !!req.user && req.user.id === nl.owner_id;
   const canEdit = isOwner && !fc && !ft; // 필터를 건 상태에서는 일부 글만 보이므로 순서 편집을 막는다
+  const noBrand = (await ownerLimits(nl.owner_id)).branding;
   posts = applyOrder(posts, lay);
   if (!isOwner) posts = posts.filter((p) => !hiddenIds.has(p.id));
   // 발행자가 고른 강의·상품: 게시된 내 강의만, 선택한 순서대로. 편집 패널에는 내 강의 전체를 보여준다
@@ -283,8 +285,8 @@ ${hasPaid(nl) ? `<p class="mute">${t('유료 구독({price})으로 전용 글을
     : `<p class="mute">${t('아직 발행된 글이 없습니다.')}</p>`}
 ${pickedCourses.length ? `<section class="lp-courses"><h2>${t('강의·상품')}</h2><div class="lc-grid">${pickedCourses.map((c) => `<a class="lc" href="/c/${c.id}"><div class="th"${c.thumbnail ? ` style="background-image:url('${h(c.thumbnail)}')"` : ''}>${c.thumbnail ? '' : '▶'}</div><div class="bd"><b>${h(c.title)}</b><span class="pr">${priceLabel(c, t)}</span></div></a>`).join('')}</div></section>` : ''}
 </main>
-<footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a> · ${t('{a}로 만든 뉴스레터', { a: '<a href="/">lett.</a>' })}</footer></div>
-${platformFooter(t, req.lang)}${canEdit ? '<div style="height:72px"></div>' : ''}
+<footer class="lp-foot mute"><a href="/n/${h(nl.slug)}/rss.xml">RSS</a>${noBrand ? '' : ` · ${t('{a}로 만든 뉴스레터', { a: '<a href="/">lett.</a>' })}`}</footer></div>
+${noBrand ? '' : platformFooter(t, req.lang)}${canEdit ? '<div style="height:72px"></div>' : ''}
 ${canEdit ? `<div class="lpbar" id="lpbar"><button type="button" class="open" id="lpopen">${t('✎ 레이아웃 편집')}</button>
 <div class="panel" id="lppanel" hidden>
 <div class="grp"><span>${t('너비')}</span><div class="seg2"><button type="button" data-k="width" data-v="narrow">${t('좁게')}</button><button type="button" data-k="width" data-v="normal">${t('보통')}</button><button type="button" data-k="width" data-v="wide">${t('넓게')}</button></div></div>

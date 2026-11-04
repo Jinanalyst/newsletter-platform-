@@ -8,6 +8,7 @@ import { h } from './render.js';
 import { page, fmt, pct } from './views.js';
 import { stripeConfigured, won } from './billing.js';
 import { payappConfigured, MIN_PRICE } from './payapp.js';
+import { ownerLimits, upsell } from './plan-limits.js';
 
 export const pro = Router();
 pro.use('/app', requireUser);
@@ -82,6 +83,12 @@ const postPicker = (nl, s, posts, back) => `<form method="post" action="/app/n/$
 <p class="mute" style="margin:0 0 10px">"글" 탭의 글을 고르면 제목과 본문이 이 흐름의 새 메일로 복사돼요. (원본 글은 그대로 두고, 복사된 메일만 따로 고칠 수 있어요.)</p>
 <div style="max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:12px">${posts.map((x) => `<button name="post_id" value="${x.id}" type="submit" style="display:flex;width:100%;gap:10px;align-items:center;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:12px 14px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h(x.subject)}</span><span class="badge ${x.status}">${POST_STATUS[x.status] || x.status}</span><span class="mute" style="font-size:12px">${(x.sent_at || x.created_at || '').slice(0, 10)}</span></button>`).join('') || '<p class="mute" style="padding:14px;margin:0">"글" 탭에 제목이 있는 글이 아직 없어요.</p>'}</div></form>`;
 
+// 자동화 권한이 없으면 목록(요금제 안내)과 삭제만 쓸 수 있다
+pro.use('/app/n/:nid/automation', async (req, res, next) => {
+  req.lim = await ownerLimits(req.nl.owner_id);
+  if (req.lim.automation || req.path === '/' || (req.method === 'POST' && /^\/\d+\/delete$/.test(req.path))) return next();
+  back(res, `/app/n/${req.nl.id}/automation`, '자동화는 Pro 플랜부터 쓸 수 있습니다.');
+});
 pro.get('/app/n/:nid/automation', async (req, res) => {
   const nl = req.nl;
   const list = await db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM posts p WHERE p.series_id=s.id AND p.kind='step') steps,
@@ -91,7 +98,7 @@ pro.get('/app/n/:nid/automation', async (req, res) => {
 <div class="card"><table><tr><th>이름</th><th>상태</th><th>단계</th><th>진행 중</th><th>완료</th></tr>${list.map((s) =>
   `<tr><td><a href="/app/n/${nl.id}/automation/${s.id}/map">${h(s.name)}</a></td><td><span class="badge ${s.active ? 'active' : ''}">${s.active ? '켜짐' : '꺼짐'}</span></td><td>${s.steps}</td><td>${s.running}</td><td>${s.finished}</td></tr>`).join('')
     || '<tr><td colspan="5" class="mute">아직 자동화가 없습니다.</td></tr>'}</table></div>
-<form class="row" method="post" action="/app/n/${nl.id}/automation/create"><input name="name" placeholder="자동화 이름 (예: 환영 메일, 입문 5일 코스)" maxlength="60" style="width:300px"><button class="primary">+ 자동화 메일 만들기</button></form>`,
+${req.lim.automation ? `<form class="row" method="post" action="/app/n/${nl.id}/automation/create"><input name="name" placeholder="자동화 이름 (예: 환영 메일, 입문 5일 코스)" maxlength="60" style="width:300px"><button class="primary">+ 자동화 메일 만들기</button></form>${req.lim.automation < 2 ? '<p class="mute">조건부 발송, 일시정지, 날짜 지정 발송은 Business 플랜에서 쓸 수 있습니다.</p>' : ''}` : upsell('자동화는 Pro 플랜부터 쓸 수 있어요', '플랜에 자동화가 없으면 만든 흐름도 발송되지 않습니다. 결제하면 멈춘 곳부터 이어서 보냅니다.')}`,
   { nl, active: 'automation', wide: true, msg: req.query.m });
 });
 // 새 자동화: 구독 즉시 발송되는 첫 단계가 들어 있는 흐름을 만든다. 이후 단계를 추가하고 순서를 바꾼다
@@ -344,6 +351,7 @@ pro.post('/app/n/:nid/automation/:sid/steps', async (req, res) => {
   if (!s) return req.body.json ? res.status(404).json({ ok: false }) : res.redirect(`/app/n/${req.nl.id}/automation`);
   const pos = ((await db.prepare("SELECT MAX(step_pos) m FROM posts WHERE series_id=? AND kind='step'").get(s.id)).m || 0) + 1;
   const wait = req.body.type === 'wait'; // 일시정지: 메일 없이 기간만 기다리는 단계 (기본 1일)
+  if (wait && req.lim.automation < 2) return req.body.json ? res.status(403).json({ ok: false }) : back(res, `/app/n/${req.nl.id}/automation/${s.id}${req.body.back === 'map' ? '/map' : ''}`, '일시정지는 Business 플랜에서 쓸 수 있습니다.');
   const id = Number((await db.prepare("INSERT INTO posts(newsletter_id,kind,status,series_id,step_pos,delay_days,subject,body_md,created_at,step_type,wait_hours) VALUES(?,'step','auto',?,?,?,?,?,?,?,?)")
     .run(req.nl.id, s.id, pos, wait || pos === 1 ? 0 : 3, '', '', now(), wait ? 'wait' : '', wait ? 24 : 0)).lastInsertRowid);
   if (req.body.json) return res.json({ id });
@@ -364,6 +372,7 @@ pro.post('/app/n/:nid/automation/:sid/steps/:pid', async (req, res) => {
   const s = await getSeries(req), b = req.body;
   const to = (m) => back(res, `/app/n/${req.nl.id}/automation/${req.params.sid}${b.back === 'map' ? '/map' : ''}?step=${encodeURIComponent(req.params.pid)}`, m);
   const cur = s && await db.prepare("SELECT step_type FROM posts WHERE id=? AND series_id=? AND kind='step'").get(req.params.pid, s.id);
+  if (req.lim.automation < 2 && (b.send_mode === 'date' || ['free', 'paid'].includes(b.cond))) return to('조건부 발송과 날짜 지정 발송은 Business 플랜에서 쓸 수 있습니다.');
   const when = b.send_mode === 'date' ? parseLocal(b.send_at, b.tz) : null; // 달력으로 고른 시각(UTC ISO)
   if (cur?.step_type === 'wait') {
     if (b.send_mode === 'date' && !when) return to('날짜와 시각을 선택하세요.');

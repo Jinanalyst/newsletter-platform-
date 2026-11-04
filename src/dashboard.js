@@ -2,7 +2,8 @@ import { Router } from 'express';
 import express from 'express';
 import { randomBytes } from 'node:crypto';
 import { saveImage, isOwnImageUrl } from './storage.js';
-import { db, now, isPaid, dailySendLimit, sentLast24h, cleanTags } from './db.js';
+import { db, now, isPaid, cleanTags } from './db.js';
+import { ownerLimits, monthlySent, graceUntil, upsell } from './plan-limits.js';
 import { renderPost, h } from './render.js';
 import { recipientsFor, sendPost, sendTest } from './send.js';
 import { smtpConfigured } from './mail.js';
@@ -175,12 +176,13 @@ dash.get('/app/n/:nid', async (req, res) => {
   const todo = steps.filter((s) => !s[1]).length;
   const checklist = todo ? `<h2>시작하기 · ${steps.length - todo}/${steps.length}</h2><div class="card"><ul class="check">${steps.map(([label, done, href]) =>
     `<li class="${done ? 'done' : ''}"><span class="dot"></span>${done || label === '이메일 인증' ? label : `<a href="${href}">${label}</a>`}${!done && label === '이메일 인증' ? ' <span class="mute">— 메일함의 인증 링크를 눌러주세요</span>' : ''}</li>`).join('')}</ul></div>` : '';
-  res.page(nl.name, `<h1>대시보드</h1>${checklist}
+  const lim = await ownerLimits(nl.owner_id);
+  res.page(nl.name, `<h1>대시보드</h1>${lim.grace ? `<div class="msg">${new Date(graceUntil()).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}부터 플랜별 기능 제한이 적용됩니다. 지금 쓰는 기능을 계속 쓰려면 <a href="/pricing">요금제</a>를 확인해 주세요.</div>` : ''}${checklist}
 ${smtpConfigured() ? '' : '<div class="msg">SMTP가 설정되지 않아 메일은 <code>outbox/</code> 폴더에 파일로 저장됩니다. 실제 발송은 <code>.env</code>에 SMTP 정보를 입력하세요.</div>'}
 <div class="stats"><div class="stat"><b>${await c('active')}</b>구독자</div><div class="stat"><b>${t.sent}</b>총 발송량</div>
 <div class="stat"><b>${pct(t.opened, t.sent)}</b>열람률</div><div class="stat"><b>${pct(clicked, t.sent)}</b>클릭률</div>
 <div class="stat"><b>${await c('pending')}</b>확인 대기</div><div class="stat"><b>${await c('unsubscribed')}</b>해지</div>
-<div class="stat"><b>${Math.max(0, dailySendLimit() - await sentLast24h(nl.id))}</b>24시간 남은 발송량 (한도 ${dailySendLimit()})</div></div>
+<div class="stat"><b>${Math.max(0, lim.monthly - await monthlySent(nl.owner_id)).toLocaleString('ko-KR')}</b>이번 달 남은 발송량 (한도 ${lim.monthly.toLocaleString('ko-KR')})</div></div>
 <h2>최근 30일 신규 구독</h2><div class="card"><div class="bars">${days.map(([d, n]) => `<i title="${d}: ${n}명" style="height:${Math.max(3, (n / max) * 100)}%"></i>`).join('')}</div></div>
 <h2>웹 방문 · 최근 30일</h2>
 <div class="stats"><div class="stat"><b>${vs.views}</b>페이지 조회</div><div class="stat"><b>${vs.visitors}</b>방문자 (하루 단위 고유)</div>
@@ -224,6 +226,7 @@ ${n <= 31 ? sv.map((v, i) => `<i class="dot" style="left:${x(i)}%;bottom:${y(v)}
 <div class="dates"><span>${md(visits[0][0])}</span><span>${md(visits[n >> 1][0])}</span><span>${md(visits[n - 1][0])}</span></div></div>`;
 }
 dash.get('/app/n/:nid/traffic', async (req, res) => {
+  if (!(await ownerLimits(req.nl.owner_id)).analytics) return res.page('유입 분석', `<h1>유입 분석</h1>${upsell('Pro 플랜부터 쓸 수 있어요', '방문 경로, 검색어, 구독자 추이를 분석합니다. 기본 통계는 대시보드에서 볼 수 있어요.')}`, { nl: req.nl, active: 'traffic', wide: true });
   const nl = req.nl, days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
   const [ts, vs, sg] = await Promise.all([trafficStats(nl.id, days), viewStats(nl.id, days), subGrowth(nl.id, days)]);
   const p = (n) => (ts.total ? Math.round((n / ts.total) * 1000) / 10 : 0);

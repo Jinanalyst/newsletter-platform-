@@ -7,6 +7,7 @@ import { db, now, baseUrl, publicHost } from './db.js';
 import { requireUser, login, createToken, checkToken } from './auth.js';import { h } from './render.js';
 import { sendMail } from './mail.js';
 import { findNewsletter } from './access.js';
+import { ownerLimits, upsell } from './plan-limits.js';
 
 export const workspace = Router();
 
@@ -92,7 +93,8 @@ const dnsIp = () => process.env.CUSTOM_DOMAIN_IP || '76.76.21.21';
 const dnsCheckUrl = (type, name) => `https://dnschecker.org/#${type}/${encodeURIComponent(name)}`;
 const rec = (type, host, value) => `<tr><td><b>${type}</b></td><td><code>${h(host)}</code></td><td><code>${h(value)}</code></td></tr>`;
 
-workspace.get(S + '/domain', (req, res) => {
+workspace.get(S + '/domain', async (req, res) => {
+  const lim = await ownerLimits(req.nl.owner_id);
   const nl = req.nl, base = PLATFORM_DOMAIN();
   const verified = !!nl.domain_verified_at;
   const target = dnsTarget(), ip = dnsIp();
@@ -102,6 +104,7 @@ workspace.get(S + '/domain', (req, res) => {
 <div class="row nowrap"><input name="subdomain" value="${h(nl.subdomain)}" placeholder="my-letter" pattern="[a-z0-9][a-z0-9\\-]{2,29}" maxlength="30" style="max-width:240px"><span class="mute">.${base}</span><button class="primary">저장</button></div>
 ${nl.subdomain ? `<p class="mute" style="margin:10px 0 0">현재 주소: <a href="https://${h(nl.subdomain)}.${base}" target="_blank" rel="noopener">https://${h(nl.subdomain)}.${base}</a></p>` : '<p class="mute" style="margin:10px 0 0">영문 소문자·숫자·하이픈, 3~30자. 비우고 저장하면 해제됩니다.</p>'}</form>
 
+${lim.domain ? '' : upsell('커스텀 도메인은 Pro 플랜부터 쓸 수 있어요', '결제하면 내 도메인으로 공개 페이지를 열 수 있습니다. 위의 무료 주소는 그대로 쓸 수 있어요.')}
 <div class="card"><b>커스텀 도메인</b>
 <p class="mute">내가 가진 도메인(예: <code>news.mysite.com</code>)으로 공개 페이지를 열 수 있어요. 도메인이 없다면 Hostinger 같은 곳에서 구입한 뒤 아래 DNS 설정을 하면 됩니다.</p>
 <p><a class="btn sm" href="${h(hostingerUrl())}" target="_blank" rel="noopener">Hostinger에서 도메인 구입 ↗</a></p>
@@ -150,6 +153,7 @@ workspace.post(S + '/domain/subdomain', async (req, res) => {
 workspace.post(S + '/domain/custom', async (req, res) => {
   const d = String(req.body.domain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   const to = (m) => back(res, here(req, 'domain'), m);
+  if (!(await ownerLimits(req.nl.owner_id)).domain) return to('커스텀 도메인은 Pro 플랜부터 쓸 수 있습니다.');
   if (!DOMAIN_RE.test(d)) return to('도메인 형식이 올바르지 않습니다. 예: news.mysite.com');
   const base = PLATFORM_DOMAIN();
   if (d === base || d.endsWith('.' + base)) return to(`${base} 주소는 위의 서브도메인 칸에서 설정하세요.`);
@@ -177,6 +181,7 @@ async function vercelDomain(method, domain) {
 
 workspace.post(S + '/domain/verify', async (req, res) => {
   const nl = req.nl, to = (m) => back(res, here(req, 'domain'), m);
+  if (!(await ownerLimits(nl.owner_id)).domain) return to('커스텀 도메인은 Pro 플랜부터 쓸 수 있습니다.');
   if (!nl.custom_domain) return to('연결된 도메인이 없습니다.');
   let txt = [];
   try { txt = (await dns.resolveTxt('_lett-verify.' + nl.custom_domain)).map((r) => r.join('')); }
@@ -201,7 +206,8 @@ workspace.get(S + '/api', async (req, res) => {
   const keys = await db.prepare('SELECT * FROM api_keys WHERE newsletter_id=? ORDER BY id DESC').all(req.nl.id);
   const url = baseUrl();
   const newKey = req.query.k && /^lett_[A-Za-z0-9_-]+$/.test(req.query.k) ? req.query.k : '';
-  shell(req, res, 'api', 'API', `
+  const lim = await ownerLimits(req.nl.owner_id);
+  shell(req, res, 'api', 'API', `${lim.api ? '' : upsell('API는 Business 플랜에서 쓸 수 있어요', '플랜에 API가 없으면 키를 만들 수 없고, 이미 만든 키도 요청이 거부됩니다.')}
 ${newKey ? `<div class="card" style="border-color:#3B82F6"><b>새 API 키</b><p class="mute">이 키는 지금 한 번만 보여드려요. 안전한 곳에 복사해 두세요.</p><code style="word-break:break-all;display:block;padding:10px;background:#F1F5F9;border-radius:8px">${h(newKey)}</code></div>` : ''}
 <div class="card"><b>API 키</b><p class="mute">이 뉴스레터의 구독자·글을 외부 서비스에서 읽고 추가할 수 있어요. 키는 최대 ${MAX_KEYS}개까지 만들 수 있습니다.</p>
 <form method="post" action="${here(req, 'api/create')}" class="row nowrap"><input name="name" placeholder="키 이름 (예: 회원가입 연동)" maxlength="40" required style="max-width:300px"><button class="primary">키 만들기</button></form>
@@ -217,6 +223,7 @@ curl -H "Authorization: Bearer lett_..." ${url}/api/v1/subscribers</pre></div>`)
 });
 
 workspace.post(S + '/api/create', async (req, res) => {
+  if (!(await ownerLimits(req.nl.owner_id)).api) return back(res, here(req, 'api'), 'API는 Business 플랜에서 쓸 수 있습니다.');
   const n = (await db.prepare('SELECT COUNT(*) n FROM api_keys WHERE newsletter_id=?').get(req.nl.id)).n;
   if (n >= MAX_KEYS) return back(res, here(req, 'api'), `API 키는 최대 ${MAX_KEYS}개까지 만들 수 있습니다.`);
   const key = 'lett_' + randomBytes(24).toString('base64url');
@@ -232,7 +239,8 @@ workspace.post(S + '/api/:kid/delete', async (req, res) => {
 const inviteLink = (t) => `${baseUrl()}/team/accept/${t}`;
 workspace.get(S + '/team', async (req, res) => {
   const list = await db.prepare(`SELECT m.*, u.name AS uname FROM team_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.newsletter_id=? ORDER BY m.id`).all(req.nl.id);
-  shell(req, res, 'team', '팀원', `
+  const lim = await ownerLimits(req.nl.owner_id);
+  shell(req, res, 'team', '팀원', `${lim.team ? '' : upsell('팀원 초대는 Business 플랜에서 쓸 수 있어요', '플랜에 팀 기능이 없으면 초대할 수 없고, 이미 있는 팀원도 이 뉴스레터에 들어올 수 없습니다.')}
 <div class="card"><b>팀원 초대</b><p class="mute">초대하면 가입하지 않은 이메일도 계정이 자동으로 만들어지고 초대 메일로 비밀번호를 정할 수 있어요. 팀원은 같은 뉴스레터에서 글 작성·발송, 구독자·자동화 관리 등 운영 화면을 쓸 수 있어요. 설정(도메인·API·팀)과 삭제는 소유자만 할 수 있습니다. 소유자 외 최대 ${MAX_TEAM}명.</p>
 <form method="post" action="${here(req, 'team/invite')}" class="row nowrap"><input type="email" name="email" placeholder="초대할 이메일" required style="max-width:320px"><button class="primary">초대 보내기</button></form></div>
 <div class="card"><b>팀원 (${list.length}/${MAX_TEAM})</b>
@@ -244,6 +252,7 @@ ${list.length ? `<table style="margin-top:10px"><tbody>${list.map((m) => `<tr><t
 workspace.post(S + '/team/invite', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const to = (m) => back(res, here(req, 'team'), m);
+  if (!(await ownerLimits(req.nl.owner_id)).team) return to('팀원 초대는 Business 플랜에서 쓸 수 있습니다.');
   if (!EMAIL_RE.test(email)) return to('이메일 형식이 올바르지 않습니다.');
   if (email === req.user.email.toLowerCase()) return to('본인은 이미 소유자입니다.');
   if (await db.prepare('SELECT 1 FROM team_members WHERE newsletter_id=? AND email=?').get(req.nl.id, email)) return to('이미 초대한 이메일입니다.');
@@ -317,6 +326,7 @@ api.use('/api/v1', async (req, res, next) => {
   const key = (/^Bearer (lett_[A-Za-z0-9_-]+)$/.exec(req.headers.authorization || '') || [])[1];
   const row = key && await db.prepare('SELECT k.id, n.* FROM api_keys k JOIN newsletters n ON n.id=k.newsletter_id WHERE k.key_hash=?').get(sha(key));
   if (!row) return res.status(401).json({ error: 'invalid_api_key', message: 'Authorization: Bearer <API 키> 헤더가 필요합니다.' });
+  if (!(await ownerLimits(row.owner_id)).api) return res.status(403).json({ error: 'plan_required', message: 'API는 Business 플랜에서 쓸 수 있습니다.' });
   req.apiNl = row;
   await db.prepare('UPDATE api_keys SET last_used_at=? WHERE id=?').run(now(), row.id);
   next();

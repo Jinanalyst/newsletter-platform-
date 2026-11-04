@@ -1,4 +1,4 @@
-// 페이앱(PayApp) 결제: 뉴스레터 유료 구독.
+// 페이앱(PayApp) 결제: 뉴스레터 유료 구독. Pro·Business 요금제는 plans.js 가 같은 API와 통보 주소를 쓴다.
 //  - 월간은 정기결제(rebillRegist), 연간은 페이앱에 연간 주기가 없어 1년치 단건 결제(payrequest)로 처리하고 만료 전에 메일로 알린다.
 //  - 결제 확정은 feedbackurl 통보로만 한다. 검증 후 'SUCCESS'를 돌려주고, 처리에 실패하면 페이앱이 다시 통보한다.
 //  - 구매자 휴대폰 번호는 페이앱에 넘기기만 하고 저장하지 않는다.
@@ -16,8 +16,8 @@ const KST = 9 * 36e5;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const stamp = () => new Date(Date.now() + KST).toISOString().replace(/\D/g, '').slice(0, 14); // yyyymmddhhiiss (한국 시간)
 const kstDate = (ms) => new Date(ms + KST).toISOString().slice(0, 10);
-const plusDays = (iso, d) => new Date(new Date(iso).getTime() + d * 864e5).toISOString();
-function plusMonths(iso, n) { // 말일을 넘기지 않는다 (1/31 + 1개월 → 2/28)
+export const plusDays = (iso, d) => new Date(new Date(iso).getTime() + d * 864e5).toISOString();
+export function plusMonths(iso, n) { // 말일을 넘기지 않는다 (1/31 + 1개월 → 2/28)
   const d = new Date(iso), day = d.getUTCDate();
   d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n);
   d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
@@ -25,7 +25,7 @@ function plusMonths(iso, n) { // 말일을 넘기지 않는다 (1/31 + 1개월 �
 }
 
 // 응답은 JSON이 아니라 쿼리 문자열이다
-async function call(cmd, params) {
+export async function call(cmd, params) {
   const userid = env('USERID'), requestdate = stamp();
   const r = await fetch(API, {
     method: 'POST',
@@ -37,6 +37,16 @@ async function call(cmd, params) {
   if (!r.ok || q.get('state') !== '1') throw new Error(q.get('errorMessage') || `페이앱 오류 (HTTP ${r.status})`);
   return q;
 }
+
+// 매월 자동 결제 주기
+export const monthlyCycle = () => {
+  const day = new Date(Date.now() + KST).getUTCDate();
+  return {
+    rebillCycleType: 'Month',
+    rebillCycleMonth: day >= 29 ? 90 : day, // 29~31일에 시작하면 짧은 달에도 빠지지 않도록 말일(90)로
+    rebillExpire: kstDate(Date.now() + 3650 * 864e5), // 필수 값이라 충분히 먼 날짜로 둔다
+  };
+};
 
 const goodName = (name) => String(name).replace(/(https?:\/\/|www\.)\S*/gi, '').trim() || '뉴스레터'; // 상품명에는 URL을 넣을 수 없다
 const upgradeUrl = (slug, token) => `${baseUrl()}/n/${slug}/upgrade?t=${token}`;
@@ -62,11 +72,7 @@ export async function startCheckout(nl, sub, plan, phone) {
       await db.prepare('UPDATE payapp_orders SET mul_no=? WHERE id=?').run(q.get('mul_no') || '', id);
       return q.get('payurl');
     }
-    const day = new Date(Date.now() + KST).getUTCDate();
-    const q = await call('rebillRegist', { ...common, goodprice: amount, rebillCycleType: 'Month',
-      rebillCycleMonth: day >= 29 ? 90 : day, // 29~31일에 시작하면 짧은 달에도 빠지지 않도록 말일(90)로
-      rebillExpire: kstDate(Date.now() + 3650 * 864e5), // 필수 값이라 충분히 먼 날짜로 둔다
-      failurl: `${baseUrl()}/payapp/feedback` });
+    const q = await call('rebillRegist', { ...common, goodprice: amount, ...monthlyCycle(), failurl: `${baseUrl()}/payapp/feedback` });
     await db.prepare('UPDATE payapp_orders SET rebill_no=? WHERE id=?').run(q.get('rebill_no') || '', id);
     return q.get('payurl');
   } catch (e) {
@@ -77,7 +83,7 @@ export async function startCheckout(nl, sub, plan, phone) {
 
 // ---------- 자동 결제 해지 ----------
 // 이미 결제한 기간(paid_until)은 유지한다. 실패하면 예외를 던지므로 호출하는 쪽에서 처리한다
-async function stopRebill(rebillNo) {
+export async function stopRebill(rebillNo) {
   await call('rebillCancel', { rebill_no: rebillNo });
   await db.prepare("UPDATE payapp_orders SET status='cancelled' WHERE rebill_no=?").run(rebillNo);
 }
@@ -154,7 +160,13 @@ async function onRenewalFailed(order) {
     text: `등록된 결제 수단으로 유료 구독료를 결제하지 못했습니다. 이용 기간이 끝나면 다시 결제해 주세요: ${url}` }).catch((e) => console.error('결제 실패 메일 오류', e.message));
 }
 
+let planHandler = null; // 요금제 결제 통보는 plans.js 가 처리한다
+export const onPlanFeedback = (fn) => { planHandler = fn; };
+
 async function handleFeedback(b) {
+  const forPlan = String(b.var1 || '').startsWith('plan:')
+    || (b.rebill_no && await db.prepare('SELECT id FROM plan_orders WHERE rebill_no=?').get(String(b.rebill_no)));
+  if (forPlan) return planHandler(b);
   const order = (b.rebill_no && await db.prepare('SELECT * FROM payapp_orders WHERE rebill_no=? ORDER BY id DESC').get(String(b.rebill_no)))
     || (b.var1 && await db.prepare('SELECT * FROM payapp_orders WHERE id=?').get(String(b.var1)));
   if (!order) return console.warn('페이앱 통보: 주문을 찾을 수 없음', b.mul_no); // 공통 통보 URL로 들어온 다른 결제일 수 있다

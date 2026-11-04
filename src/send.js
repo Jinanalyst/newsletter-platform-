@@ -6,11 +6,23 @@ import { randomBytes } from 'node:crypto';
 import { db, now, baseUrl, isPaid, dailySendLimit, sentLast24h } from './db.js';
 import { sendMail } from './mail.js';
 import { sendRenewalNotices } from './payapp.js';
+import { ownerLimits, monthlySent, monthKey, paidOwnerSql, releaseLapsedDomains } from './plan-limits.js';
 import { renderPost, toText, personalize } from './render.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const delayMs = () => Number(process.env.SEND_DELAY_MS ?? 100);
 const ownerEmail = async (nl) => (await db.prepare('SELECT email FROM users WHERE id=?').get(nl.owner_id))?.email;
+
+// 이번 달 발송량을 다 쓰면 소유자에게 한 번만 알린다
+async function notifyQuota(ownerId, monthly) {
+  const m = monthKey();
+  if (!(await db.prepare('UPDATE users SET quota_notice_month=? WHERE id=? AND quota_notice_month<>?').run(m, ownerId, m)).changes) return;
+  const u = await db.prepare('SELECT email FROM users WHERE id=?').get(ownerId);
+  const url = `${baseUrl()}/pricing`;
+  sendMail({ to: u.email, subject: '[lett.] 이번 달 이메일 발송량을 모두 사용했습니다', fromName: 'lett.',
+    html: `<p>이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송되며, <a href="${url}">요금제</a>를 올리면 바로 이어집니다.</p>`,
+    text: `이번 달 발송 한도 ${monthly.toLocaleString('ko-KR')}건을 모두 사용해 남은 메일 발송이 멈췄습니다. 다음 달 1일에 이어서 발송되며, 요금제를 올리면 바로 이어집니다: ${url}` }).catch((e) => console.error('발송 한도 안내 메일 오류', e.message));
+}
 
 // 대상: 확정된 구독자 중 아직 못 받은 사람, 글의 audience(전체/유료/무료) 조건 적용
 export const recipientsFor = async (post, limit = 100000) =>
@@ -47,6 +59,9 @@ export async function sendBatch(postId, budgetMs = 20_000) {
   if (!post || !['draft', 'scheduled', 'sending'].includes(post.status)) return { done: true, sent: 0 };
   const nl = await db.prepare('SELECT * FROM newsletters WHERE id=?').get(post.newsletter_id);
   await db.prepare("UPDATE posts SET status='sending' WHERE id=? AND status IN ('draft','scheduled')").run(postId); // 원자적 전이
+  const lim = await ownerLimits(nl.owner_id);
+  const daily = Math.max(dailySendLimit(), lim.monthly); // 유료 플랜은 한 번에 구독자 전체에게 보낼 수 있어야 한다
+  let left = lim.monthly - await monthlySent(nl.owner_id);
   let sent = 0;
   for (;;) {
     const batch = await recipientsFor(post, 50);
@@ -56,13 +71,14 @@ export async function sendBatch(postId, budgetMs = 20_000) {
     }
     for (const sub of batch) {
       if (Date.now() > deadline) return { done: false, sent };
-      // 24시간 발송 한도: 넘으면 일시 중단하고 1시간 뒤 다시 시도
-      if ((await sentLast24h(nl.id)) >= dailySendLimit()) {
+      // 플랜의 월 발송량 또는 24시간 발송 한도: 넘으면 일시 중단하고 1시간 뒤 다시 시도
+      if (left <= 0) await notifyQuota(nl.owner_id, lim.monthly);
+      if (left <= 0 || (await sentLast24h(nl.id)) >= daily) {
         await db.prepare("UPDATE posts SET status='scheduled', scheduled_at=? WHERE id=?").run(new Date(Date.now() + 3600e3).toISOString(), postId);
         console.warn(`발송 한도 도달: 뉴스레터 ${nl.id}, 글 ${postId} — 1시간 뒤 재개`);
         return { done: false, sent, limited: true };
       }
-      if (await deliver(post, nl, sub)) sent++;
+      if (await deliver(post, nl, sub)) { sent++; left--; }
       if (delayMs()) await sleep(delayMs());
     }
   }
@@ -86,6 +102,8 @@ const stepAt = (st) => st.send_at || (st.step_type === 'wait' ? addHours(st.wait
 
 // 구독 확정 시 호출: 'subscribe' 트리거 시리즈에 등록
 export async function enrollSubscriber(sub) {
+  const nl = await db.prepare('SELECT owner_id FROM newsletters WHERE id=?').get(sub.newsletter_id);
+  if (!nl || !(await ownerLimits(nl.owner_id)).automation) return;
   const list = await db.prepare("SELECT id FROM series WHERE newsletter_id=? AND active=1 AND trigger='subscribe'").all(sub.newsletter_id);
   for (const s of list) {
     const first = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' ORDER BY step_pos LIMIT 1").get(s.id);
@@ -96,12 +114,19 @@ export async function enrollSubscriber(sub) {
 
 export async function processSeries(budgetMs = 20_000) {
   const deadline = Date.now() + budgetMs;
-  const due = await db.prepare(`SELECT e.*, s.newsletter_id FROM series_enroll e JOIN series s ON s.id=e.series_id
-    WHERE e.done=0 AND s.active=1 AND e.next_at<=? ORDER BY e.next_at LIMIT 100`).all(now());
+  const paid = paidOwnerSql(); // 자동화 권한이 없는 소유자의 시리즈는 멈춰 둔다
+  const due = await db.prepare(`SELECT e.*, s.newsletter_id, n.owner_id FROM series_enroll e JOIN series s ON s.id=e.series_id
+    JOIN newsletters n ON n.id=s.newsletter_id JOIN users u ON u.id=n.owner_id
+    WHERE e.done=0 AND s.active=1 AND e.next_at<=? AND ${paid.sql} ORDER BY e.next_at LIMIT 100`).all(now(), ...paid.params);
   let handled = 0;
   for (const e of due) {
     if (Date.now() > deadline) break;
-    if ((await sentLast24h(e.newsletter_id)) >= dailySendLimit()) continue; // 한도 초과 시 다음 틱에 재시도
+    const lim = await ownerLimits(e.owner_id), over = (await monthlySent(e.owner_id)) >= lim.monthly;
+    if (over) await notifyQuota(e.owner_id, lim.monthly);
+    if (over || (await sentLast24h(e.newsletter_id)) >= Math.max(dailySendLimit(), lim.monthly)) { // 한도 초과: 1시간 뒤로 미뤄 다른 뉴스레터의 발송을 막지 않는다
+      await db.prepare('UPDATE series_enroll SET next_at=? WHERE id=?').run(addHours(1), e.id);
+      continue;
+    }
     const sub = await db.prepare('SELECT * FROM subscribers WHERE id=?').get(e.subscriber_id);
     const step = await db.prepare("SELECT * FROM posts WHERE series_id=? AND kind='step' AND step_pos=?").get(e.series_id, e.next_pos);
     if (!sub || sub.status !== 'active' || !step) { await db.prepare('UPDATE series_enroll SET done=1 WHERE id=?').run(e.id); continue; }
@@ -129,6 +154,7 @@ export async function tick(budgetMs = 50_000) {
   }
   const series = Date.now() < deadline ? await processSeries(deadline - Date.now()) : 0;
   const renewals = Date.now() < deadline ? await sendRenewalNotices() : 0;
+  await releaseLapsedDomains();
   return { posts: posts.length, sent, series, renewals };
 }
 
