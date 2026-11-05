@@ -151,9 +151,9 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
   const verCount = (await db.prepare('SELECT COUNT(*) n FROM post_versions WHERE post_id=?').get(p.id)).n;
   const tpls = await db.prepare('SELECT id,name,subject,preview,body_md FROM templates WHERE newsletter_id=? ORDER BY id').all(nl.id);
   const cfg = { nid: nl.id, id: p.id, status: p.status, rev: p.updated_at || '', body_md: p.body_md, scheduled_at: p.scheduled_at || '',
-    templates: tpls, sample: { name: req.user.name || '', email: req.user.email }, from: nl.name };
+    team: nl.team_n > 0, templates: tpls, sample: { name: req.user.name || '', email: req.user.email }, from: nl.name };
   res.page(sent ? '글 수정' : '글 쓰기', `<div class="row"><h1 class="grow">${sent ? '글 수정' : '글 쓰기'} <span class="badge ${p.status}">${p.status}</span></h1>
-<span class="mute" id="savestate">${p.status === 'scheduled' ? '예약됨 — 수정하면 예약이 해제됩니다' : ''}</span>
+<span class="mute" id="coedit"></span><span class="mute" id="savestate">${p.status === 'scheduled' ? '예약됨 — 수정하면 예약이 해제됩니다' : ''}</span>
 <button type="button" class="sm" id="pvopen">미리보기</button></div>
 <form method="post" id="f"><input type="hidden" name="tz" id="tz"><input type="hidden" name="body_md" id="body">
 <div class="editor"><div>
@@ -198,6 +198,21 @@ ed.post('/app/n/:nid/preview', async (req, res) => {
   const sample = { name: String(b.sample_name || '').slice(0, 60), email: String(b.sample_email || '').slice(0, 100), token: '' };
   // 이메일 미리보기는 유료 구간까지 모두 보여주는 'test' 모드(실제 발송 모양)
   res.send(await renderPost(post, req.nl, b.mode === 'email' ? { mode: 'test', sub: sample } : { mode: 'web', canRead: true }));
+});
+
+// ---------- 팀원과 실시간 공동 편집 ----------
+// 서버리스라 폴링으로 동기화한다. 클라이언트가 rev 가 다를 때만 전체 내용을 받아 가고, 같은 글을 보고 있는 사람 목록도 함께 돌려준다
+ed.get('/app/n/:nid/posts/:id/live', async (req, res) => {
+  const p = await getPost(req);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  const t = Date.now(), iso = (ms) => new Date(ms).toISOString();
+  await db.prepare(`INSERT INTO post_presence(post_id,user_id,seen_at) VALUES(?,?,?)
+    ON CONFLICT (post_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE post_presence.seen_at < ?`).run(p.id, req.user.id, iso(t), iso(t - 8e3));
+  const editors = await db.prepare(`SELECT COALESCE(NULLIF(u.name,''), u.email) AS name FROM post_presence e JOIN users u ON u.id=e.user_id
+    WHERE e.post_id=? AND e.user_id<>? AND e.seen_at>? ORDER BY u.id`).all(p.id, req.user.id, iso(t - 25e3));
+  const out = { rev: p.updated_at || '', status: p.status, editors: editors.map((e) => e.name) };
+  if (String(req.query.rev || '') !== out.rev) Object.assign(out, { subject: p.subject, preview: p.preview, body_md: p.body_md, category: p.category, tags: p.tags, thumb: p.thumb || '' });
+  res.set('Cache-Control', 'no-store').json(out);
 });
 
 // ---------- 자동 저장 ----------

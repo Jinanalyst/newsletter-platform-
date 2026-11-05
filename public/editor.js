@@ -384,11 +384,12 @@
   async function autosave(keepalive = false) {
     if (!dirty || stopped || cfg.status !== 'draft' || saving) return;
     saving = true; dirty = false;
+    const snap = payload();
     try {
-      const r = await fetch(`/app/n/${cfg.nid}/posts/${cfg.id}/autosave`, { method: 'POST', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload(), rev: cfg.rev }) });
+      const r = await fetch(`/app/n/${cfg.nid}/posts/${cfg.id}/autosave`, { method: 'POST', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...snap, rev: cfg.rev }) });
       const j = await r.json().catch(() => ({}));
-      if (r.ok) { cfg.rev = j.rev; setState(`자동 저장됨 ${hhmm(j.at)}`); }
-      else if (j.conflict) { stopped = true; setState(j.error); }
+      if (r.ok) { cfg.rev = j.rev; base = { subject: snap.subject, preview: snap.preview, body_md: norm(snap.body_md) }; setState(`자동 저장됨 ${hhmm(j.at)}`); }
+      else if (j.conflict) { dirty = true; setState('팀원의 수정과 합치는 중…'); setTimeout(coPoll, 0); } // 같은 순간에 저장이 겹침 → 최신 내용을 받아 합친 뒤 다시 저장
       else { dirty = true; setState(j.error || '자동 저장 실패 — 다시 시도합니다'); }
     } catch { dirty = true; setState('자동 저장 실패 (네트워크) — 다시 시도합니다'); }
     saving = false;
@@ -400,6 +401,112 @@
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty) autosave(true); });
   window.addEventListener('beforeunload', (e) => { if (dirty && !stopped && (cfg.status === 'draft' || cfg.status === 'sent')) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ---------- 팀원과 실시간 공동 편집 ----------
+  // 2.5초마다 서버 내용을 확인한다. 내 미저장 변경이 없으면 그대로 반영하고, 있으면 문단 단위로 3-way 병합한다
+  // (같은 문단을 동시에 고친 경우에만 내 내용을 우선). 병합 결과는 곧바로 자동 저장되어 모두에게 퍼진다.
+  const norm = (md) => serialize(parse(md || ''));
+  let base = { subject: subj.value, preview: prev.value, body_md: norm(cfg.body_md) };
+  const coEl = $('#coedit');
+  const paras = (md) => {
+    const out = []; let cur = [], fence = false;
+    for (const l of String(md).split('\n')) {
+      if (/^```/.test(l)) fence = !fence;
+      if (!l.trim() && !fence) { if (cur.length) out.push(cur.join('\n')); cur = []; } else cur.push(l);
+    }
+    if (cur.length) out.push(cur.join('\n'));
+    return out;
+  };
+  function hunks(a, b) {
+    const n = a.length, m = b.length;
+    if (n * m > 4e6) return a.join('\n\n') === b.join('\n\n') ? [] : [{ s: 0, e: n, r: b }];
+    const d = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) d[i][j] = a[i] === b[j] ? d[i + 1][j + 1] + 1 : Math.max(d[i + 1][j], d[i][j + 1]);
+    const hs = []; let i = 0, j = 0, h = null;
+    const open = () => { if (!h) h = { s: i, e: i, r: [] }; };
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) { if (h) { hs.push(h); h = null; } i++; j++; }
+      else if (j < m && (i >= n || d[i][j + 1] >= d[i + 1][j])) { open(); h.r.push(b[j]); j++; }
+      else { open(); i++; h.e = i; }
+    }
+    if (h) hs.push(h);
+    return hs;
+  }
+  function merge3(bs, mine, theirs) {
+    const all = [...hunks(bs, mine).map((h) => ({ ...h, m: 1 })), ...hunks(bs, theirs).map((h) => ({ ...h, m: 0 }))].sort((x, y) => x.s - y.s || x.e - y.e);
+    const out = []; let pos = 0, k = 0, conflict = false;
+    while (k < all.length) {
+      const grp = [all[k++]]; const cs = grp[0].s; let ce = grp[0].e;
+      while (k < all.length && (all[k].s < ce || (all[k].s === ce && (all[k].s === all[k].e || grp[grp.length - 1].s === grp[grp.length - 1].e)))) { ce = Math.max(ce, all[k].e); grp.push(all[k++]); }
+      const mh = grp.filter((h) => h.m), th = grp.filter((h) => !h.m);
+      const key = (hs) => JSON.stringify(hs.map(({ s, e, r }) => [s, e, r]));
+      if (mh.length && th.length && key(mh) !== key(th)) conflict = true;
+      const use = mh.length ? mh : th; // 같은 문단을 동시에 고쳤다면 내 쪽 우선
+      out.push(...bs.slice(pos, cs));
+      let p = cs; for (const h of use) { out.push(...bs.slice(p, h.s), ...h.r); p = h.e; }
+      out.push(...bs.slice(p, ce)); pos = ce;
+    }
+    out.push(...bs.slice(pos));
+    return { text: out.join('\n\n'), conflict };
+  }
+  const paintEditors = (names) => { if (coEl) coEl.textContent = names && names.length ? `👥 ${names.join(', ')} 님과 함께 편집 중 · ` : ''; };
+  function pull(j) {
+    const theirs = { subject: j.subject, preview: j.preview, body_md: norm(j.body_md) };
+    const mine = current(), mineBody = rawMode ? norm(mine.body_md) : mine.body_md;
+    let body = theirs.body_md, subject = theirs.subject, preview = theirs.preview, note = '';
+    if (dirty) {
+      const m = merge3(paras(base.body_md), paras(mineBody), paras(theirs.body_md));
+      body = m.text;
+      const keepS = mine.subject !== base.subject, keepP = mine.preview !== base.preview;
+      subject = keepS ? mine.subject : theirs.subject; preview = keepP ? mine.preview : theirs.preview;
+      if (m.conflict || (keepS && theirs.subject !== base.subject && theirs.subject !== mine.subject)) note = '같은 부분을 함께 고쳐서 내 내용을 유지했어요';
+    }
+    const act = document.activeElement, blk = act?.closest?.('.blk'), at = act?.selectionStart, txt = blk ? act.value : null;
+    const bi = blk ? idx(+blk.dataset.id) : -1;
+    subj.value = subject; prev.value = preview;
+    if (!dirty) {
+      if (form.elements.category) form.elements.category.value = j.category || '';
+      form.elements.tags.value = j.tags || ''; thumbEl.value = j.thumb || ''; paintThumb();
+    }
+    if (rawMode) rawEl.value = body;
+    else {
+      blocks = parse(body); render();
+      if (blk) {
+        let t = blocks.findIndex((b) => b.text === txt); if (t < 0) t = Math.min(bi, blocks.length - 1);
+        if (t >= 0) {
+          focusBlock(blocks[t].id);
+          const ta = $(`.blk[data-id="${blocks[t].id}"] textarea`);
+          if (ta && at != null) { const c = Math.min(at, ta.value.length); ta.setSelectionRange(c, c); }
+        }
+      }
+    }
+    if (act === subj || act === prev) { act.focus(); if (at != null) act.setSelectionRange(at, at); }
+    bodyField.value = body;
+    cfg.rev = j.rev; base = theirs;
+    if (!pvcol.hidden) updatePreview();
+    if (dirty) { changed(true); if (note) setState(note); }
+    else setState(`팀원의 수정이 반영됐어요 ${hhmm(new Date().toISOString())}`);
+  }
+  let coTimer = 0, coBusy = false;
+  async function coPoll() {
+    clearTimeout(coTimer);
+    if (!stopped && !coBusy && !saving) {
+      coBusy = true;
+      const sentRev = cfg.rev;
+      try {
+        const r = await fetch(`/app/n/${cfg.nid}/posts/${cfg.id}/live?rev=${encodeURIComponent(sentRev)}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (r.ok) {
+          const j = await r.json(); paintEditors(j.editors);
+          // 요청 사이에 내가 먼저 저장했다면(rev 변경) 오래된 응답이므로 버린다
+          if (j.body_md !== undefined && !saving && cfg.rev === sentRev && j.rev !== cfg.rev) pull(j);
+          if (j.status && j.status !== 'draft') { stopped = true; setState('다른 창에서 글 상태가 바뀌었습니다. 새로고침해 주세요.'); }
+        }
+      } catch { /* 다음 주기에 다시 */ }
+      coBusy = false;
+    }
+    if (!stopped) coTimer = setTimeout(coPoll, document.hidden ? 10000 : 2500);
+  }
+  if (cfg.team && cfg.status === 'draft') coTimer = setTimeout(coPoll, 2500);
 
   // ---------- 미리보기 ----------
   let pvMode = 'web', pvDev = 'd';
