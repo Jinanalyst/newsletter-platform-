@@ -333,6 +333,12 @@ CREATE TABLE IF NOT EXISTS team_messages (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tmsg_nl ON team_messages(newsletter_id, id);
+CREATE TABLE IF NOT EXISTS team_presence (
+  newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seen_at TEXT NOT NULL,
+  PRIMARY KEY (newsletter_id, user_id)
+);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_pct NUMERIC;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS creator_plan TEXT NOT NULL DEFAULT '';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS pg_fee INTEGER NOT NULL DEFAULT 0;

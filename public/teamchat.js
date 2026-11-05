@@ -47,6 +47,17 @@
     list.append(el);
   }
 
+  // 인원 수에 마우스를 올리면 누가 온라인·오프라인인지 보여준다
+  const count = $('.tc-head small');
+  function paintMembers(ms) {
+    if (!ms || !count) return;
+    const on = ms.filter((m) => m.online).length;
+    count.textContent = `${ms.length}명 · 온라인 ${on}`;
+    const line = (m) => `${m.online ? '🟢' : '⚪'} ${m.name}${m.owner ? ' (소유자)' : ''}${m.id === me ? ' (나)' : ''}`;
+    count.title = [...ms.filter((m) => m.online), ...ms.filter((m) => !m.online)].map((m) => `${line(m)} — ${m.online ? '온라인' : '오프라인'}`).join('\n');
+    count.style.cursor = 'help';
+  }
+
   async function poll() {
     if (busy) return schedule();
     busy = true;
@@ -55,6 +66,7 @@
       if (r.ok) {
         const j = await r.json();
         me = j.me;
+        paintMembers(j.members);
         const near = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
         const first = !last;
         for (const m of j.messages) {

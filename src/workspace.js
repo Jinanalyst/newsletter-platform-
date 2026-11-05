@@ -327,7 +327,16 @@ workspace.get('/app/n/:nid/chat', requireUser, member, async (req, res) => {
   const after = Math.max(0, parseInt(req.query.after, 10) || 0);
   const rows = await db.prepare(`SELECT * FROM (SELECT m.id, m.user_id, m.body, m.created_at, COALESCE(NULLIF(u.name,''), u.email) AS name
     FROM team_messages m JOIN users u ON u.id=m.user_id WHERE m.newsletter_id=? AND m.id>? ORDER BY m.id DESC LIMIT 100) t ORDER BY id`).all(req.nl.id, after);
-  res.set('Cache-Control', 'no-store').json({ me: req.user.id, messages: rows });
+  // 채팅 폴링이 곧 접속 신호: 15초보다 오래된 기록만 갱신해 쓰기를 줄이고, 45초 안에 신호가 있으면 온라인으로 본다
+  const t = Date.now();
+  await db.prepare(`INSERT INTO team_presence(newsletter_id,user_id,seen_at) VALUES(?,?,?)
+    ON CONFLICT (newsletter_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE team_presence.seen_at < ?`)
+    .run(req.nl.id, req.user.id, new Date(t).toISOString(), new Date(t - 15e3).toISOString());
+  const people = await db.prepare(`SELECT u.id, COALESCE(NULLIF(u.name,''), u.email) AS name, (u.id=n.owner_id) AS is_owner, p.seen_at
+    FROM newsletters n JOIN users u ON u.id=n.owner_id OR u.id IN (SELECT user_id FROM team_members WHERE newsletter_id=n.id AND status='active')
+    LEFT JOIN team_presence p ON p.newsletter_id=n.id AND p.user_id=u.id WHERE n.id=? ORDER BY is_owner DESC, u.id`).all(req.nl.id);
+  const members = people.map((u) => ({ id: u.id, name: u.name, owner: !!u.is_owner, online: u.id === req.user.id || (!!u.seen_at && t - Date.parse(u.seen_at) < 45e3) }));
+  res.set('Cache-Control', 'no-store').json({ me: req.user.id, messages: rows, members });
 });
 workspace.post('/app/n/:nid/chat', requireUser, member, async (req, res) => {
   const body = String(req.body.body || '').trim().slice(0, 2000);
