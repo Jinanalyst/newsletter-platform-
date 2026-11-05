@@ -111,7 +111,7 @@ ${cats.length || c || tag ? `<p class="mute">분류: <a href="/app/n/${nl.id}/po
 <td><a href="/app/n/${nl.id}/posts/${p.id}">${h(p.subject || '(제목 없음)')}</a></td>
 <td class="mute">${h(p.category)}${p.tags ? ` ${p.tags.split(',').map((t) => `<a href="?tag=${encodeURIComponent(t)}">#${h(t)}</a>`).join(' ')}` : ''}</td>
 <td><span class="badge ${p.status}">${p.status}</span></td>
-<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td style="white-space:nowrap">${editable ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}">수정</a> ` : ''}${p.status === 'sent' ? `<a href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a> ` : ''}${p.status !== 'sending' ? `<button type="submit" form="del${p.id}" class="btn sm danger" onclick="return confirm('${p.status === 'sent' ? '발송된 글입니다. 삭제하면 공개 페이지와 통계가 사라지며 되돌릴 수 없습니다. 삭제할까요?' : '삭제할까요?'}')">삭제</button>` : ''}</td></tr>`;
+<td class="mute">${fmt(p.sent_at || p.scheduled_at || p.created_at)}</td><td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${editable ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}">수정</a>` : ''}${p.status === 'sent' ? `<a class="btn sm" href="/app/n/${nl.id}/posts/${p.id}/stats">통계</a>` : ''}${p.status !== 'sending' ? `<button type="submit" form="del${p.id}" class="btn sm danger" onclick="return confirm('${p.status === 'sent' ? '발송된 글입니다. 삭제하면 공개 페이지와 통계가 사라지며 되돌릴 수 없습니다. 삭제할까요?' : '삭제할까요?'}')">삭제</button>` : ''}</div></td></tr>`;
   }).join('')
     || '<tr><td colspan="6" class="mute">아직 없습니다.</td></tr>'}</table></div></form>
 <script>(function(){var all=document.getElementById('bulkAll'),btn=document.getElementById('bulkBtn'),cnt=document.getElementById('bulkCnt'),cs=[].slice.call(document.querySelectorAll('.bulkChk'));
