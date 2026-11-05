@@ -18,6 +18,7 @@ import { viewStats, postViewStats, trafficStats, subGrowth } from './analytics.j
 import { findNewsletter, OWNER_ONLY } from './access.js';
 import { settingsTabs } from './workspace.js';
 import { claimedSub, claimedHost, clearClaim } from './claim.js';
+import { TOPICS, topicKey } from './topics.js';
 
 export const dash = Router();
 dash.use('/app', requireUser);

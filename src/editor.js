@@ -207,7 +207,7 @@ ed.get('/app/n/:nid/posts/:id/live', async (req, res) => {
   if (!p) return res.status(404).json({ error: 'not_found' });
   const t = Date.now(), iso = (ms) => new Date(ms).toISOString();
   await db.prepare(`INSERT INTO post_presence(post_id,user_id,seen_at) VALUES(?,?,?)
-    ON CONFLICT (post_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE post_presence.seen_at < ?`).run(p.id, req.user.id, iso(t), iso(t - 8e3));
+    ON CONFLICT (post_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE post_presence.seen_at < ? RETURNING seen_at`).run(p.id, req.user.id, iso(t), iso(t - 8e3));
   const editors = await db.prepare(`SELECT COALESCE(NULLIF(u.name,''), u.email) AS name FROM post_presence e JOIN users u ON u.id=e.user_id
     WHERE e.post_id=? AND e.user_id<>? AND e.seen_at>? ORDER BY u.id`).all(p.id, req.user.id, iso(t - 25e3));
   const out = { rev: p.updated_at || '', status: p.status, editors: editors.map((e) => e.name) };

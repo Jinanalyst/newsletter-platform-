@@ -330,7 +330,7 @@ workspace.get('/app/n/:nid/chat', requireUser, member, async (req, res) => {
   // 채팅 폴링이 곧 접속 신호: 15초보다 오래된 기록만 갱신해 쓰기를 줄이고, 45초 안에 신호가 있으면 온라인으로 본다
   const t = Date.now();
   await db.prepare(`INSERT INTO team_presence(newsletter_id,user_id,seen_at) VALUES(?,?,?)
-    ON CONFLICT (newsletter_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE team_presence.seen_at < ?`)
+    ON CONFLICT (newsletter_id,user_id) DO UPDATE SET seen_at=EXCLUDED.seen_at WHERE team_presence.seen_at < ? RETURNING seen_at`)
     .run(req.nl.id, req.user.id, new Date(t).toISOString(), new Date(t - 15e3).toISOString());
   const people = await db.prepare(`SELECT u.id, COALESCE(NULLIF(u.name,''), u.email) AS name, (u.id=n.owner_id) AS is_owner, p.seen_at
     FROM newsletters n JOIN users u ON u.id=n.owner_id OR u.id IN (SELECT user_id FROM team_members WHERE newsletter_id=n.id AND status='active')
