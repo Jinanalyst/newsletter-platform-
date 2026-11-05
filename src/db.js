@@ -188,7 +188,8 @@ ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS custom_domain TEXT NOT NULL DEF
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS domain_token TEXT NOT NULL DEFAULT '';
 ALTER TABLE newsletters ADD COLUMN IF NOT EXISTS domain_verified_at TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_subdomain ON newsletters(subdomain) WHERE subdomain <> '';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_domain ON newsletters(custom_domain) WHERE custom_domain <> '';
+DROP INDEX IF EXISTS idx_nl_domain;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nl_domain_verified ON newsletters(custom_domain) WHERE custom_domain <> '' AND domain_verified_at IS NOT NULL;
 CREATE TABLE IF NOT EXISTS api_keys (
   id SERIAL PRIMARY KEY,
   newsletter_id INTEGER NOT NULL REFERENCES newsletters(id) ON DELETE CASCADE,

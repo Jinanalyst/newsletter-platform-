@@ -16,7 +16,11 @@ const MAX_KEYS = 5;
 export const RESERVED = new Set(['www', 'app', 'api', 'admin', 'mail', 'smtp', 'ftp', 'cname', 'static', 'cdn', 'blog', 'help', 'support']);
 export const SUB_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;
 const DOMAIN_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// co.kr 처럼 두 단계로 된 공용 접미사. 이 경우 mysite.co.kr 은 서브도메인이 아니라 루트 도메인이다
+const SLD = new Set(['co.kr', 'or.kr', 'ne.kr', 'go.kr', 're.kr', 'pe.kr', 'ac.kr', 'hs.kr', 'ms.kr', 'es.kr', 'sc.kr', 'kg.kr', 'seoul.kr', 'busan.kr',
+  'co.uk', 'org.uk', 'ac.uk', 'me.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'or.jp', 'ne.jp', 'co.in', 'com.br', 'com.cn', 'com.tw', 'com.hk', 'com.sg', 'com.mx', 'co.za']);
+export const isSubdomain = (d) => { const p = d.split('.'); return p.length > (SLD.has(p.slice(-2).join('.')) ? 3 : 2); };
+const EMAIL_RE =/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const back = (res, path, m) => res.redirect(m ? path + '?m=' + encodeURIComponent(m) : path);
 
@@ -42,6 +46,11 @@ export async function domainRouter(req, res, next) {
     const nl = host.endsWith('.' + base)
       ? await db.prepare('SELECT slug FROM newsletters WHERE subdomain=?').get(host.slice(0, -base.length - 1))
       : await db.prepare('SELECT slug FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL').get(host);
+    if (!nl && host.startsWith('www.') && !host.endsWith('.' + base)) {
+      // 루트 도메인을 연결한 경우 www. 로 들어온 요청은 루트 도메인으로 보낸다
+      const apex = host.slice(4);
+      if (!isSubdomain(apex) && await db.prepare('SELECT 1 FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL').get(apex)) return res.redirect(301, `https://${apex}${req.originalUrl}`);
+    }
     if (!nl) return canonicalRedirect(req, res, next, host);
     const [path, query] = req.url.split('?');
     if (path === '/' || HOST_PATHS.test(path)) req.url = `/n/${nl.slug}${path === '/' ? '' : path}${query ? '?' + query : ''}`;
@@ -97,6 +106,7 @@ workspace.get(S + '/domain', async (req, res) => {
   const lim = await ownerLimits(req.nl.owner_id);
   const nl = req.nl, base = PLATFORM_DOMAIN();
   const verified = !!nl.domain_verified_at;
+  const sub = !!nl.custom_domain && isSubdomain(nl.custom_domain);
   const target = dnsTarget(), ip = dnsIp();
   shell(req, res, 'domain', '도메인', `
 <form class="card" method="post" action="${here(req, 'domain/subdomain')}">
@@ -119,12 +129,12 @@ ${verified ? `<p>공개 페이지: <a href="https://${h(nl.custom_domain)}" targ
 <li>저장 후 반영까지 몇 분~최대 24시간이 걸릴 수 있어요. 그 뒤 <b>연결 확인</b>을 누르세요.</li></ol>
 <table><thead><tr><th>유형</th><th>이름(호스트)</th><th>값</th></tr></thead><tbody>
 ${rec('TXT', '_lett-verify', 'lett-verify=' + nl.domain_token)}
-${nl.custom_domain.split('.').length > 2 ? rec('CNAME', nl.custom_domain.split('.')[0], target) : (ip ? rec('A', '@', ip) : '') + rec('CNAME', 'www', target)}
+${sub ? rec('CNAME', nl.custom_domain.split('.')[0], target) : (ip ? rec('A', '@', ip) : '') + rec('CNAME', 'www', target)}
 </tbody></table>
-<p class="mute">TXT 레코드는 도메인 소유 확인용이고, ${nl.custom_domain.split('.').length > 2 ? 'CNAME은 하위 도메인을 lett.로 연결' : 'A(또는 CNAME) 레코드는 접속을 lett.로 연결'}합니다. Hostinger의 이름 칸에는 도메인 전체가 아니라 위 이름만 입력하세요.</p>
+<p class="mute">TXT 레코드는 도메인 소유 확인용이고, ${sub ? 'CNAME은 하위 도메인을 lett.로 연결' : 'A(또는 CNAME) 레코드는 접속을 lett.로 연결'}합니다. Hostinger의 이름 칸에는 도메인 전체가 아니라 위 이름만 입력하세요.</p>
 <p class="mute" style="margin:0 0 10px">DNS가 반영됐는지 전 세계 서버에서 미리 확인해 볼 수 있어요:
 <a href="${dnsCheckUrl('TXT', '_lett-verify.' + nl.custom_domain)}" target="_blank" rel="noopener">TXT 확인 ↗</a> ·
-<a href="${dnsCheckUrl(nl.custom_domain.split('.').length > 2 ? 'CNAME' : 'A', nl.custom_domain)}" target="_blank" rel="noopener">${nl.custom_domain.split('.').length > 2 ? 'CNAME' : 'A'} 확인 ↗</a> (dnschecker.org)</p>
+<a href="${dnsCheckUrl(sub ? 'CNAME' : 'A', nl.custom_domain)}" target="_blank" rel="noopener">${sub ? 'CNAME' : 'A'} 확인 ↗</a> (dnschecker.org)</p>
 <div class="row"><form method="post" action="${here(req, 'domain/verify')}" style="margin:0"><button class="primary">연결 확인</button></form>
 <form method="post" action="${here(req, 'domain/remove')}" style="margin:0" onsubmit="return confirm('커스텀 도메인 연결을 해제할까요?')"><button class="danger">연결 해제</button></form></div>`
     : `<form method="post" action="${here(req, 'domain/custom')}" class="row nowrap" style="margin-top:8px"><input name="domain" placeholder="news.mysite.com" required maxlength="120" style="max-width:320px"><button class="primary">도메인 연결</button></form>
@@ -157,7 +167,8 @@ workspace.post(S + '/domain/custom', async (req, res) => {
   if (!DOMAIN_RE.test(d)) return to('도메인 형식이 올바르지 않습니다. 예: news.mysite.com');
   const base = PLATFORM_DOMAIN();
   if (d === base || d.endsWith('.' + base)) return to(`${base} 주소는 위의 서브도메인 칸에서 설정하세요.`);
-  if (await db.prepare('SELECT 1 FROM newsletters WHERE custom_domain=? AND id<>?').get(d, req.nl.id)) return to('이미 다른 뉴스레터에 연결된 도메인입니다.');
+  // 인증이 끝난 도메인만 선점으로 본다. 미인증 등록은 실제 소유자가 TXT 인증을 통과하면 넘어간다
+  if (await db.prepare('SELECT 1 FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL AND id<>?').get(d, req.nl.id)) return to('이미 다른 뉴스레터에 연결된 도메인입니다.');
   await db.prepare('UPDATE newsletters SET custom_domain=?, domain_token=?, domain_verified_at=NULL WHERE id=?').run(d, randomBytes(12).toString('hex'), req.nl.id);
   to('도메인을 등록했습니다. 아래 DNS 레코드를 설정해 주세요.');
 });
@@ -187,7 +198,9 @@ workspace.post(S + '/domain/verify', async (req, res) => {
   try { txt = (await dns.resolveTxt('_lett-verify.' + nl.custom_domain)).map((r) => r.join('')); }
   catch { return to('TXT 레코드를 찾지 못했습니다. DNS 반영에는 시간이 걸리니 잠시 후 다시 확인해 주세요.'); }
   if (!txt.includes('lett-verify=' + nl.domain_token)) return to('TXT 레코드 값이 일치하지 않습니다. 값을 다시 확인해 주세요.');
+  if (await db.prepare('SELECT 1 FROM newsletters WHERE custom_domain=? AND domain_verified_at IS NOT NULL AND id<>?').get(nl.custom_domain, nl.id)) return to('이미 다른 뉴스레터에 연결된 도메인입니다.');
   if (vercelOn()) {
+    if (!isSubdomain(nl.custom_domain)) await vercelDomain('POST', 'www.' + nl.custom_domain).catch(() => {}); // www → 루트 리다이렉트용, 실패해도 무시
     const err = await vercelDomain('POST', nl.custom_domain).catch((e) => { console.error('Vercel 도메인 API 오류', e.message); return 'Vercel에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'; });
     if (err) return to('도메인 소유는 확인했지만 서버에 도메인을 추가하지 못했습니다: ' + err);
   }
@@ -196,7 +209,10 @@ workspace.post(S + '/domain/verify', async (req, res) => {
 });
 
 workspace.post(S + '/domain/remove', async (req, res) => {
-  if (vercelOn() && req.nl.custom_domain && req.nl.domain_verified_at) await vercelDomain('DELETE', req.nl.custom_domain).catch((e) => console.error('Vercel 도메인 제거 오류', e.message));
+  if (vercelOn() && req.nl.custom_domain && req.nl.domain_verified_at) {
+    await vercelDomain('DELETE', req.nl.custom_domain).catch((e) => console.error('Vercel 도메인 제거 오류', e.message));
+    if (!isSubdomain(req.nl.custom_domain)) await vercelDomain('DELETE', 'www.' + req.nl.custom_domain).catch(() => {});
+  }
   await db.prepare("UPDATE newsletters SET custom_domain='', domain_token='', domain_verified_at=NULL WHERE id=?").run(req.nl.id);
   back(res, here(req, 'domain'), '연결을 해제했습니다.');
 });
