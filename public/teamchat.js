@@ -52,9 +52,12 @@
   function paintMembers(ms) {
     if (!ms || !count) return;
     const on = ms.filter((m) => m.online).length;
-    count.textContent = `${ms.length}명 · 온라인 ${on}`;
-    const line = (m) => `${m.online ? '🟢' : '⚪'} ${m.name}${m.owner ? ' (소유자)' : ''}${m.id === me ? ' (나)' : ''}`;
-    count.title = [...ms.filter((m) => m.online), ...ms.filter((m) => !m.online)].map((m) => `${line(m)} — ${m.online ? '온라인' : '오프라인'}`).join('\n');
+    count.textContent = '';
+    const dot = document.createElement('i');
+    dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle;background:${on > 1 ? '#22A05A' : '#CBD5E1'}`;
+    count.append(dot, `${ms.length}명 · ${on} 온라인`);
+    const line = (m) => `${m.online ? '●' : '○'}  ${m.name}${m.owner ? ' (소유자)' : ''}${m.id === me ? ' (나)' : ''}  ·  ${m.online ? '온라인' : '오프라인'}`;
+    count.title = [...ms.filter((m) => m.online), ...ms.filter((m) => !m.online)].map(line).join('\n');
     count.style.cursor = 'help';
   }
 

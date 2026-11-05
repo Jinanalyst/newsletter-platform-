@@ -449,7 +449,7 @@
     out.push(...bs.slice(pos));
     return { text: out.join('\n\n'), conflict };
   }
-  const paintEditors = (names) => { if (coEl) coEl.textContent = names && names.length ? `👥 ${names.join(', ')} 님과 함께 편집 중 · ` : ''; };
+  const paintEditors = (names) => { if (coEl) coEl.textContent = names && names.length ? `${names.join(', ')} 님과 함께 편집 중 · ` : ''; };
   function pull(j) {
     const theirs = { subject: j.subject, preview: j.preview, body_md: norm(j.body_md) };
     const mine = current(), mineBody = rawMode ? norm(mine.body_md) : mine.body_md;
