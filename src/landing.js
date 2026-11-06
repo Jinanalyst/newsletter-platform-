@@ -182,6 +182,7 @@ ${msg ? `<div class="err" role="alert">${h(t(msg))}</div>` : ''}
   const feat = (n, title, body) => `<div class="f"><span class="no">${n}</span><div><h3>${t(title)}</h3><p>${t(body)}</p></div></div>`;
 
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="naver-site-verification" content="3eb226521154880c47cf132e14fa03fbdb034972" />
 <title>${h(t('lett. — 당신의 이야기가 시작되는 곳'))}</title>
 <meta name="description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간. 뉴스레터를 만들고, 독자를 만나고, 콘텐츠로 성장하세요.'))}">
 <meta property="og:title" content="${h(t('lett. — 당신의 이야기가 시작되는 곳'))}"><meta property="og:description" content="${h(t('누구나 자신의 이야기를 세상에 펼칠 수 있는 공간.'))}">
