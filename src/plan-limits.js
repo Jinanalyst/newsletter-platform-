@@ -14,7 +14,12 @@ const graceCutoff = () => process.env.PLAN_GRACE_CUTOFF || '2026-11-04T15:00:00.
 export const graceUntil = () => process.env.PLAN_GRACE_UNTIL || '2026-12-04T15:00:00.000Z'; // 2026-12-05 00:00 (한국 시간)까지
 const inGrace = (u) => now() < graceUntil() && u.created_at < graceCutoff();
 
+// 운영자 계정: 요금제 한도 없이 모든 기능을 쓴다. UNLIMITED_EMAILS(쉼표 구분)로 바꿀 수 있고, 이메일 인증을 마친 계정만 해당된다
+const unlimitedEmails = () => String(process.env.UNLIMITED_EMAILS ?? 'jangj6091@gmail.com').toLowerCase().split(/[,\s]+/).filter(Boolean);
+const isUnlimited = (u) => !!u && !!u.verified && unlimitedEmails().includes(String(u.email || '').toLowerCase());
+
 export function limitsFor(u) {
+  if (isUnlimited(u)) return { ...LIMITS.business, plan: 'business', name: 'Business', subscribers: null, monthly: 1e9, seats: 100, grace: false, unlimited: true };
   const paid = u && LIMITS[u.plan] && u.plan_until && u.plan_until > now() ? u.plan : '';
   if (!enforced()) { const plan = paid || 'free'; return { ...LIMITS.business, plan, feePct: LIMITS[plan].feePct, name: LIMITS[plan].name, grace: false, open: true }; }
   if (paid) return { ...LIMITS[paid], plan: paid, grace: false };
@@ -23,13 +28,14 @@ export function limitsFor(u) {
 }
 // 더 올릴 요금제가 있는지 (유예 중인 계정은 실제로 결제한 플랜이 없으므로 있음)
 export const hasUpgrade = (lim) => lim.grace || lim.plan !== 'business';
-export const ownerLimits = async (ownerId) => limitsFor(await db.prepare('SELECT plan, plan_until, created_at FROM users WHERE id=?').get(ownerId));
+export const ownerLimits = async (ownerId) => limitsFor(await db.prepare('SELECT email, verified, plan, plan_until, created_at FROM users WHERE id=?').get(ownerId));
 
 // 유료 권한이 있는 소유자만 고르는 SQL 조건 (users 별칭은 u)
 export function paidOwnerSql() {
   if (!enforced()) return { sql: 'TRUE', params: [] };
   const paid = "(u.plan IN ('pro','business') AND COALESCE(u.plan_until,'')>?)", t = now();
-  return now() < graceUntil() ? { sql: `(${paid} OR u.created_at<?)`, params: [t, graceCutoff()] } : { sql: paid, params: [t] };
+  const un = unlimitedEmails(), owner = un.length ? ` OR (u.verified=1 AND LOWER(u.email) IN (${un.map(() => '?').join(',')}))` : '';
+  return now() < graceUntil() ? { sql: `(${paid} OR u.created_at<?${owner})`, params: [t, graceCutoff(), ...un] } : { sql: `(${paid}${owner})`, params: [t, ...un] };
 }
 
 // 이번 달(한국 시간) 소유자의 모든 뉴스레터에서 보낸 메일 수
