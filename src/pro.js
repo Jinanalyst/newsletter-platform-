@@ -258,7 +258,7 @@ function idx(k){return S.findIndex(function(d){return String(d.id)===String(k)})
 function P(k){return pos[k]||dflt(k,k==='start'?-1:idx(k))}
 function mk(cls,k){var n=document.createElement('div');n.className='nd '+cls;n.dataset.k=k;els[k]=n;world.appendChild(n);var p=P(k);n.style.left=p[0]+'px';n.style.top=p[1]+'px';return n}
 function port(n,c,k){var s=document.createElement('span');s.className='pt '+c;if(k!=null)s.dataset.k=k;n.appendChild(s)}
-function fmtAt(iso){return new Date(iso).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+function fmtAt(iso){return new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function waitTxt(d){return d.sendAt?fmtAt(d.sendAt)+'까지':d.waitHours%24===0?(d.waitHours/24)+'일 동안':d.waitHours+'시간 동안'}
 function mailNo(i){var n=0;for(var j=0;j<=i;j++)if(S[j].type==='mail')n++;return n}
 function fill(n,d,i){n.innerHTML='';var hd=document.createElement('div');hd.className='hd';var no=document.createElement('span');no.className='no';var tt=document.createElement('span');tt.className='tt';var sm=document.createElement('small');

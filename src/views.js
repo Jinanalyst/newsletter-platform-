@@ -274,5 +274,5 @@ export const platformFooter = (t, lang) => `
 <footer class="pf"><div class="pfin"><a href="/" class="wm" aria-label="${t('lett. 홈')}">lett<i>.</i></a><span class="pft">${t('당신의 이야기가 시작되는 곳')}</span><span class="sp"></span>${langSwitcher(lang)}</div>
 <div class="pfb"><span class="pfl"><a href="/pricing">${t('요금제')}</a><a href="/privacy">${t('개인정보처리방침')}</a><a href="/refund">${t('환불 정책')}</a></span>${bizInfo(t)}<div class="pfc">© ${new Date().getFullYear()} lett.</div></div></footer>`;
 
-export const fmt = (iso, lang = 'ko') => (iso ? new Date(iso).toLocaleString(LOCALES[lang] || 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+export const fmt = (iso, lang = 'ko') => (iso ? new Date(iso).toLocaleString(LOCALES[lang] || 'ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }) : '—');
 export const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 + '%' : '—');
