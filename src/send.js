@@ -28,19 +28,23 @@ async function notifyQuota(ownerId, monthly) {
 export const recipientsFor = async (post, limit = 100000) =>
   (await db.prepare(`SELECT s.* FROM subscribers s
     WHERE s.newsletter_id=? AND s.status='active'${post.group_id ? '\n      AND EXISTS (SELECT 1 FROM subscriber_group_members m WHERE m.group_id=? AND m.subscriber_id=s.id)' : ''}
-      AND NOT EXISTS (SELECT 1 FROM send_log l WHERE l.post_id=? AND l.subscriber_id=s.id)
-    ORDER BY s.id LIMIT ?`).all(...(post.group_id ? [post.newsletter_id, post.group_id] : [post.newsletter_id]), post.id, limit))
+      AND NOT EXISTS (SELECT 1 FROM send_log l WHERE l.post_id=? AND l.subscriber_id=s.id AND l.round>=?)
+    ORDER BY s.id LIMIT ?`).all(...(post.group_id ? [post.newsletter_id, post.group_id] : [post.newsletter_id]), post.id, post.resend_round || 0, limit))
     .filter((s) => (post.audience === 'paid' ? isPaid(s) : post.audience === 'free' ? !isPaid(s) : true));
 
 // 한 명에게 발송 (일반 발행·시리즈 단계 공용). 이미 다른 곳에서 선점/발송했다면 건너뛰고 false.
 export async function deliver(post, nl, sub) {
   const tok = randomBytes(12).toString('hex');
-  const claim = await db.prepare('INSERT OR IGNORE INTO send_log(post_id,subscriber_id,tok,sent_at,error) VALUES(?,?,?,?,NULL)').run(post.id, sub.id, tok, now());
+  // 재발송(resend_round 증가)이면 기존 기록을 새 회차로 갱신해 한 번 더 보낸다. 같은 회차에서는 중복 선점되지 않는다.
+  const round = post.resend_round || 0;
+  const claim = await db.prepare(`INSERT INTO send_log(post_id,subscriber_id,tok,sent_at,error,round) VALUES(?,?,?,?,NULL,?)
+    ON CONFLICT (post_id,subscriber_id) DO UPDATE SET tok=EXCLUDED.tok, sent_at=EXCLUDED.sent_at, error=NULL, round=EXCLUDED.round
+    WHERE send_log.round<EXCLUDED.round RETURNING id`).run(post.id, sub.id, tok, now(), round);
   if (!claim.changes) return false;
   try {
     const html = await renderPost(post, nl, { mode: 'email', sub, tok });
     await sendMail({
-      to: sub.email, subject: personalize(post.subject, sub, { html: false }), html, text: toText(html), fromName: nl.name, replyTo: await ownerEmail(nl),
+      to: sub.email, subject: (round > 0 ? '[수정] ' : '') + personalize(post.subject, sub, { html: false }), html, text: toText(html), fromName: nl.name, replyTo: await ownerEmail(nl),
       headers: { 'List-Unsubscribe': `<${baseUrl()}/unsubscribe/${sub.token}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
     });
     return true;
@@ -86,6 +90,13 @@ export async function sendBatch(postId, budgetMs = 20_000) {
 
 // 대시보드의 "지금 발송": 요청 안에서 먼저 처리(서버리스는 응답 후 백그라운드 실행이 보장되지 않음)하고 남은 것은 크론이 이어받는다
 export const sendPost = (postId) => sendBatch(postId, Number(process.env.SEND_INLINE_MS || 20_000));
+
+// 이미 발송한 글을 고친 뒤 구독자에게 수정본을 다시 보낸다. 상태가 'sent'일 때만 원자적으로 시작한다.
+export async function resendPost(postId) {
+  const r = await db.prepare("UPDATE posts SET status='sending', resend_round=resend_round+1 WHERE id=? AND kind='post' AND status='sent'").run(postId);
+  if (!r.changes) return { done: true, sent: 0 };
+  return sendPost(postId);
+}
 
 export async function sendTest(post, nl, user) {
   const sub = { name: user.name || '테스트', email: user.email, token: '' };

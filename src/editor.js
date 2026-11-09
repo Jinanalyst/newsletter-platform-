@@ -6,7 +6,7 @@ import { db, now, cleanTags } from './db.js';
 import { ownerLimits } from './plan-limits.js';
 import { requireUser, cooldown } from './auth.js';
 import { renderPost, h } from './render.js';
-import { recipientsFor, sendPost, sendTest } from './send.js';
+import { recipientsFor, sendPost, resendPost, sendTest } from './send.js';
 import { smtpConfigured } from './mail.js';
 import { fetchSafe, parseFeed, htmlToMd } from './importer.js';
 import { fmt } from './views.js';
@@ -142,9 +142,10 @@ ed.get('/app/n/:nid/posts/:id', async (req, res) => {
   if (!p) return res.redirect(`/app/n/${nl.id}/posts`);
   if (p.status === 'sending') return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
   const sent = p.status === 'sent';
+  const reN = sent ? (await recipientsFor({ ...p, resend_round: (p.resend_round || 0) + 1 })).length : 0;
   const sentCard = `<div class="card"><div class="row"><div><label>공개 대상</label><select name="audience"><option value="all" ${p.audience === 'all' ? 'selected' : ''}>모든 구독자</option><option value="paid" ${p.audience === 'paid' ? 'selected' : ''}>유료 구독자만</option><option value="free" ${p.audience === 'free' ? 'selected' : ''}>무료 구독자만</option></select></div><input type="hidden" name="scheduled_at" id="sched"><span id="tzname" hidden></span></div>
-<p class="mute">이미 발송된 글입니다. 여기서 고친 내용은 <b>공개 페이지에만</b> 반영되고, 이미 받은 메일은 바뀌지 않습니다.</p>
-<div class="row"><button class="primary" name="action" value="update">수정 내용 저장</button><a class="btn" href="/app/n/${nl.id}/posts/${p.id}/stats">통계 보기</a><a class="btn" href="/n/${h(nl.slug)}/p/${p.id}" target="_blank" rel="noopener">공개 페이지 열기</a></div></div>`;
+<p class="mute">이미 발송된 글입니다. 여기서 고친 내용은 <b>공개 페이지에만</b> 반영되고, 이미 받은 메일은 바뀌지 않습니다. 수정본을 메일로도 보내려면 <b>수정본 다시 발송</b>을 누르세요(제목 앞에 [수정]이 붙고, 이번 달 발송량에 포함됩니다).</p>
+<div class="row"><button class="primary" name="action" value="update">수정 내용 저장</button><button name="action" value="resend" onclick="return confirm('수정한 내용을 구독자 ${reN}명에게 다시 발송합니다. 계속할까요?')">수정본 다시 발송</button><a class="btn" href="/app/n/${nl.id}/posts/${p.id}/stats">통계 보기</a><a class="btn" href="/n/${h(nl.slug)}/p/${p.id}" target="_blank" rel="noopener">공개 페이지 열기</a></div></div>`;
   const n = (await recipientsFor(p)).length;
   const groups = (await ownerLimits(nl.owner_id)).groups || p.group_id ? await db.prepare('SELECT id, name FROM subscriber_groups WHERE newsletter_id=? ORDER BY name').all(nl.id) : [];
   const cats = categoriesOf(nl);
@@ -234,7 +235,15 @@ ed.post('/app/n/:nid/posts/:id', async (req, res) => {
   const go = (m) => back(res, `/app/n/${nl.id}/posts/${p.id}`, m);
   const { c } = await applyContent(p, nl, b);
   await snapshot(p.id, c, 'manual', true);
-  if (p.status === 'sent') return go('수정 내용을 저장했습니다. 공개 페이지에 반영됩니다.'); // 발송된 글: 내용만 갱신, 재발송·예약 없음
+  if (p.status === 'sent') {
+    if (b.action === 'resend') {
+      if (!req.user.verified) return go('이메일 인증 후 발송할 수 있습니다. 상단의 "인증 메일 다시 받기"를 눌러주세요.');
+      if (!p.subject || !p.body_md) return go('제목과 본문을 입력하세요.');
+      try { await resendPost(p.id); } catch (e) { console.error('재발송 오류', e); }
+      return res.redirect(`/app/n/${nl.id}/posts/${p.id}/stats`);
+    }
+    return go('수정 내용을 저장했습니다. 공개 페이지에 반영됩니다.');
+  } // 발송된 글: 내용만 갱신, 재발송·예약 없음
   const when = parseLocal(b.scheduled_at, b.tz);
   await db.prepare('UPDATE posts SET scheduled_at=? WHERE id=?').run(when, p.id);
   const fresh = await getPost(req);
