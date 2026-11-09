@@ -47,7 +47,8 @@ app.get('/api/cron', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: '5m', index: false, dotfiles: 'deny' }));
+app.use('/static', express.static(fileURLToPath(new URL('../public', import.meta.url)), { maxAge: '5m', index: false, dotfiles: 'deny',
+  setHeaders: (res) => res.set('Cache-Control', 'public, max-age=300, s-maxage=31536000') })); // 브라우저 5분, Vercel CDN은 배포 단위로 오래 캐시(배포하면 새로 채워짐)
 app.use('/uploads', express.static('uploads', { maxAge: '7d', index: false, dotfiles: 'deny' })); // 로컬 개발용 업로드 폴더
 app.use(seo); // /sitemap.xml · /robots.txt (로그인·언어 처리 전에 응답해 쿠키 없이 캐시되게 한다)
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
