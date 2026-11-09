@@ -3,7 +3,8 @@ import { Router } from 'express';
 import express from 'express';
 import dns from 'node:dns/promises';
 import { randomBytes, createHash } from 'node:crypto';
-import { db, now, baseUrl, publicHost } from './db.js';
+import { db, now, baseUrl, publicHost, cleanTags } from './db.js';
+import { sendPost } from './send.js';
 import { requireUser, login, createToken, checkToken } from './auth.js';import { h } from './render.js';
 import { sendMail } from './mail.js';
 import { findNewsletter } from './access.js';
@@ -225,7 +226,7 @@ workspace.get(S + '/api', async (req, res) => {
   const lim = await ownerLimits(req.nl.owner_id);
   shell(req, res, 'api', 'API', `${lim.api ? '' : upsell('API는 Business 플랜에서 쓸 수 있어요', '플랜에 API가 없으면 키를 만들 수 없고, 이미 만든 키도 요청이 거부됩니다.')}
 ${newKey ? `<div class="card" style="border-color:#3B82F6"><b>새 API 키</b><p class="mute">이 키는 지금 한 번만 보여드려요. 안전한 곳에 복사해 두세요.</p><code style="word-break:break-all;display:block;padding:10px;background:#F1F5F9;border-radius:8px">${h(newKey)}</code></div>` : ''}
-<div class="card"><b>API 키</b><p class="mute">이 뉴스레터의 구독자·글을 외부 서비스에서 읽고 추가할 수 있어요. 키는 최대 ${MAX_KEYS}개까지 만들 수 있습니다.</p>
+<div class="card"><b>API 키</b><p class="mute">이 뉴스레터의 구독자를 읽고 추가하고, 글을 작성·수정·발행할 수 있어요. 키는 최대 ${MAX_KEYS}개까지 만들 수 있습니다.</p>
 <form method="post" action="${here(req, 'api/create')}" class="row nowrap"><input name="name" placeholder="키 이름 (예: 회원가입 연동)" maxlength="40" required style="max-width:300px"><button class="primary">키 만들기</button></form>
 ${keys.length ? `<table style="margin-top:14px"><thead><tr><th>이름</th><th>키</th><th>마지막 사용</th><th></th></tr></thead><tbody>${keys.map((k) => `<tr><td>${h(k.name)}</td><td><code>${h(k.prefix)}…</code></td><td class="mute">${k.last_used_at ? h(k.last_used_at.slice(0, 16).replace('T', ' ')) : '—'}</td>
 <td style="text-align:right"><form method="post" action="${here(req, 'api/' + k.id + '/delete')}" style="margin:0" onsubmit="return confirm('이 키를 삭제하면 바로 사용할 수 없게 됩니다.')"><button class="danger sm">삭제</button></form></td></tr>`).join('')}</tbody></table>` : ''}</div>
@@ -233,7 +234,12 @@ ${keys.length ? `<table style="margin-top:14px"><thead><tr><th>이름</th><th>�
 <pre style="overflow:auto;background:#0F172A;color:#E2E8F0;padding:14px;border-radius:10px;font-size:13px;line-height:1.6">GET  ${url}/api/v1/newsletter
 GET  ${url}/api/v1/subscribers?status=active&amp;limit=100&amp;offset=0
 POST ${url}/api/v1/subscribers   {"email":"a@b.com","name":"이름"}
-GET  ${url}/api/v1/posts?limit=20
+GET  ${url}/api/v1/posts?status=sent&amp;limit=20   (sent · draft · scheduled)
+GET  ${url}/api/v1/posts/ID
+POST ${url}/api/v1/posts   {"subject":"제목","body_md":"# 본문","publish":"draft|now|schedule","scheduled_at":"2026-12-01T09:00:00+09:00"}
+PATCH ${url}/api/v1/posts/ID   {"subject":"새 제목","body_md":"..."}
+POST ${url}/api/v1/posts/ID/send   (초안 발행, scheduled_at 으로 예약 가능)
+DELETE ${url}/api/v1/posts/ID   (초안만)
 
 curl -H "Authorization: Bearer lett_..." ${url}/api/v1/subscribers</pre></div>`);
 });
@@ -347,7 +353,7 @@ workspace.post('/app/n/:nid/chat', requireUser, member, async (req, res) => {
 
 // ---------- 공개 API (/api/v1) ----------
 export const api = Router();
-api.use('/api/v1', express.json({ limit: '100kb' }));
+api.use('/api/v1', express.json({ limit: '2mb' }));
 api.use('/api/v1', async (req, res, next) => {
   const key = (/^Bearer (lett_[A-Za-z0-9_-]+)$/.exec(req.headers.authorization || '') || [])[1];
   const row = key && await db.prepare('SELECT k.id, n.* FROM api_keys k JOIN newsletters n ON n.id=k.newsletter_id WHERE k.key_hash=?').get(sha(key));
@@ -383,7 +389,101 @@ api.post('/api/v1/subscribers', async (req, res) => {
 });
 api.get('/api/v1/posts', async (req, res) => {
   const { limit, offset } = page(req);
-  const rows = await db.prepare("SELECT id,subject,preview,category,tags,sent_at FROM posts WHERE newsletter_id=? AND kind='post' AND status='sent' ORDER BY sent_at DESC LIMIT ? OFFSET ?").all(req.apiNl.id, limit, offset);
-  res.json({ data: rows.map((p) => ({ ...p, url: `${baseUrl()}/n/${req.apiNl.slug}/p/${p.id}` })), limit, offset });
+  const status = ['draft', 'scheduled', 'sent'].includes(req.query.status) ? req.query.status : 'sent';
+  const rows = await db.prepare("SELECT id,subject,preview,category,tags,status,scheduled_at,sent_at FROM posts WHERE newsletter_id=? AND kind='post' AND status=? ORDER BY COALESCE(sent_at, updated_at) DESC LIMIT ? OFFSET ?").all(req.apiNl.id, status, limit, offset);
+  res.json({ data: rows.map((p) => ({ ...p, url: p.status === 'sent' ? `${baseUrl()}/n/${req.apiNl.slug}/p/${p.id}` : null })), limit, offset });
 });
+
+// ----- 글 작성·수정·발행 (자동 발행용) -----
+// 상태: draft(초안) · scheduled(예약) · sending(발송 중) · sent(발행됨)
+const POST_COLS = 'id,subject,preview,body_md,category,tags,audience,status,scheduled_at,sent_at,created_at,updated_at';
+const postOut = (nl, p) => ({ ...p, url: p.status === 'sent' ? `${baseUrl()}/n/${nl.slug}/p/${p.id}` : null });
+const getApiPost = (req) => db.prepare("SELECT " + POST_COLS + " FROM posts WHERE id=? AND newsletter_id=? AND kind='post'").get(req.params.id, req.apiNl.id);
+const categoriesOf = (nl) => String(nl.categories || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+function cleanFields(nl, b, base = {}) {
+  const has = (k) => b[k] !== undefined;
+  const out = { ...base };
+  if (has('subject')) out.subject = String(b.subject || '').trim().slice(0, 200);
+  if (has('preview')) out.preview = String(b.preview || '').slice(0, 300);
+  if (has('body_md')) out.body_md = String(b.body_md || '').slice(0, 500_000);
+  if (has('category')) out.category = categoriesOf(nl).includes(String(b.category)) ? String(b.category) : '';
+  if (has('tags')) out.tags = cleanTags(Array.isArray(b.tags) ? b.tags.join(',') : b.tags);
+  if (has('audience')) out.audience = ['paid', 'free'].includes(b.audience) ? b.audience : 'all';
+  if (has('thumb')) out.thumb = /^https?:\/\/\S+$/.test(String(b.thumb || '').trim()) ? String(b.thumb).trim().slice(0, 500) : '';
+  return out;
+}
+
+// 발송(발행) 전 확인: 제목·본문, 소유자 이메일 인증
+async function sendProblem(nl, p) {
+  if (!p.subject || !p.body_md) return { status: 400, error: 'empty_post', message: '제목(subject)과 본문(body_md)이 필요합니다.' };
+  const owner = await db.prepare('SELECT verified FROM users WHERE id=?').get(nl.owner_id);
+  if (!owner?.verified) return { status: 403, error: 'email_not_verified', message: '소유자 이메일 인증 후 발송할 수 있습니다.' };
+  return null;
+}
+async function publish(req, res, id, when) {
+  const p = await db.prepare("SELECT * FROM posts WHERE id=? AND kind='post'").get(id);
+  const bad = await sendProblem(req.apiNl, p);
+  if (bad) return res.status(bad.status).json({ error: bad.error, message: bad.message });
+  if (when) {
+    if (!(new Date(when) > new Date(Date.now() + 60_000))) return res.status(400).json({ error: 'invalid_schedule', message: 'scheduled_at은 현재보다 1분 이상 이후의 ISO 시각이어야 합니다.' });
+    await db.prepare("UPDATE posts SET status='scheduled', scheduled_at=? WHERE id=? AND status IN ('draft','scheduled')").run(new Date(when).toISOString(), id);
+  } else {
+    try { await sendPost(id); } catch (e) { console.error('API 발송 오류', e); }
+  }
+  res.status(200).json(postOut(req.apiNl, await getApiPost({ params: { id }, apiNl: req.apiNl })));
+}
+const parseWhen = (v) => { if (v === undefined || v === null || v === '') return null; const d = new Date(v); return isNaN(d) ? false : d.toISOString(); };
+
+api.get('/api/v1/posts/:id', async (req, res) => {
+  const p = await getApiPost(req);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  res.json(postOut(req.apiNl, p));
+});
+
+// 새 글. publish: "draft"(기본, 초안으로만 저장) | "now"(저장 즉시 발행·발송) | "schedule"(scheduled_at 에 발행)
+api.post('/api/v1/posts', async (req, res) => {
+  const b = req.body || {}, nl = req.apiNl;
+  const mode = b.publish === undefined ? 'draft' : String(b.publish);
+  if (!['draft', 'now', 'schedule'].includes(mode)) return res.status(400).json({ error: 'invalid_publish', message: 'publish는 draft, now, schedule 중 하나입니다.' });
+  const f = cleanFields(nl, b, { subject: '', preview: '', body_md: '', category: '', tags: '', audience: 'all', thumb: '' });
+  if (!f.subject || !f.body_md) return res.status(400).json({ error: 'empty_post', message: '제목(subject)과 본문(body_md)이 필요합니다.' });
+  const when = parseWhen(b.scheduled_at);
+  if (mode === 'schedule' && !when) return res.status(400).json({ error: 'invalid_schedule', message: 'publish가 schedule이면 scheduled_at(ISO 시각)이 필요합니다.' });
+  const t = now();
+  const id = Number((await db.prepare('INSERT INTO posts(newsletter_id,subject,preview,body_md,category,tags,audience,thumb,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .run(nl.id, f.subject, f.preview, f.body_md, f.category, f.tags, f.audience, f.thumb, t, t)).lastInsertRowid);
+  if (mode === 'draft') return res.status(201).json(postOut(nl, await getApiPost({ params: { id }, apiNl: nl })));
+  await publish(req, res, id, mode === 'schedule' ? when : null);
+});
+
+// 글 수정. 초안·예약 글은 내용을 바꾸고(예약은 초안으로 돌아감), 이미 발행된 글은 공개 페이지 내용만 바뀐다(받은 메일은 그대로)
+api.patch('/api/v1/posts/:id', async (req, res) => {
+  const p = await getApiPost(req);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (p.status === 'sending') return res.status(409).json({ error: 'sending', message: '발송 중인 글은 수정할 수 없습니다.' });
+  const f = cleanFields(req.apiNl, req.body || {}, p);
+  await db.prepare("UPDATE posts SET subject=?, preview=?, body_md=?, category=?, tags=?, audience=?, thumb=COALESCE(?,thumb), updated_at=?, status=CASE WHEN status='scheduled' THEN 'draft' ELSE status END WHERE id=?")
+    .run(f.subject, f.preview, f.body_md, f.category, f.tags, f.audience, f.thumb ?? null, now(), p.id);
+  res.json(postOut(req.apiNl, await getApiPost(req)));
+});
+
+// 초안(또는 예약) 글 발행. 본문에 scheduled_at 이 있으면 그 시각에 예약, 없으면 즉시 발송
+api.post('/api/v1/posts/:id/send', async (req, res) => {
+  const p = await getApiPost(req);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!['draft', 'scheduled'].includes(p.status)) return res.status(409).json({ error: 'already_sent', message: '이미 발행됐거나 발송 중인 글입니다.' });
+  const when = parseWhen(req.body?.scheduled_at);
+  if (when === false) return res.status(400).json({ error: 'invalid_schedule', message: 'scheduled_at은 ISO 시각이어야 합니다.' });
+  await publish(req, res, p.id, when);
+});
+
+api.delete('/api/v1/posts/:id', async (req, res) => {
+  const p = await getApiPost(req);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (p.status !== 'draft') return res.status(409).json({ error: 'not_draft', message: 'API로는 초안만 삭제할 수 있습니다.' });
+  await db.prepare('DELETE FROM posts WHERE id=?').run(p.id);
+  res.json({ deleted: true });
+});
+
 api.use('/api/v1', (req, res) => res.status(404).json({ error: 'not_found' }));
