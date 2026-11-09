@@ -320,6 +320,8 @@ dash.get('/app/n/:nid/subscribers', async (req, res) => {
   if (q) rows = rows.filter((s) => (s.email + s.name).toLowerCase().includes(String(q).toLowerCase()));
   if (status) rows = rows.filter((s) => s.status === status);
   const base = `/app/n/${nl.id}/subscribers`;
+  // 추가·가져오기 때 넣을 그룹 선택(기존 그룹 또는 새 그룹). 그룹이 없는 플랜에서는 숨긴다
+  const groupPick = lim.groups ? `<label>그룹에 넣기 <span class="mute">(선택)</span></label><div class="row nowrap"><select name="group_id" style="width:auto" aria-label="그룹"><option value="">그룹 없음</option>${groups.map((g) => `<option value="${g.id}"${gid === g.id ? ' selected' : ''}>${h(g.name)}</option>`).join('')}</select><input name="new_group" maxlength="40" placeholder="또는 새 그룹 이름" aria-label="새 그룹 이름"></div>` : '';
   const groupCard = lim.groups ? `<div class="card"><div class="row"><b class="grow">구독자 그룹</b><form class="row nowrap" method="post" action="${base}/groups"><input name="name" required maxlength="40" placeholder="새 그룹 이름" style="width:180px"><button class="sm">만들기</button></form></div>
 <div class="chips" style="margin:12px 0 0"><a class="chip${gid ? '' : ' on'}" href="${base}">전체</a>${groups.map((g) => `<a class="chip${gid === g.id ? ' on' : ''}" href="?group=${g.id}">${h(g.name)} ${g.n}</a>`).join('')}</div>
 ${gid ? `<form method="post" action="${base}/groups/${gid}/delete" style="margin:10px 0 0" onsubmit="return confirm('그룹을 삭제할까요? 구독자는 그대로 남습니다.')"><button class="sm danger">이 그룹 삭제</button></form>` : ''}
@@ -338,10 +340,10 @@ ${rows.slice(0, 500).map((s) => `<tr>${groups.length ? `<td><input type="checkbo
 <td class="mute">${fmt(s.created_at)}</td><td><form method="post" action="/app/n/${nl.id}/subscribers/${s.id}/delete" style="margin:0" onsubmit="return confirm('삭제할까요?')"><button class="sm danger">삭제</button></form></td></tr>`).join('')}</table>
 ${rows.length > 500 ? '<p class="mute">상위 500명만 표시됩니다. 검색으로 좁혀보세요.</p>' : ''}</div>
 <div class="editor"><form class="card" method="post" action="/app/n/${nl.id}/subscribers/add"><h2 style="margin-top:0">직접 추가</h2>
-<label>이메일</label><input type="email" name="email" required><label>이름</label><input name="name"><p><button class="primary">추가</button></p></form>
+<label>이메일</label><input type="email" name="email" required><label>이름</label><input name="name">${groupPick}<p><button class="primary">추가</button></p></form>
 <form class="card" method="post" action="/app/n/${nl.id}/subscribers/import"><h2 style="margin-top:0">CSV 가져오기</h2>
 <label id="csvdrop" class="dropzone">CSV·텍스트 파일을 여기에 끌어다 놓거나 <u>파일 선택</u><input type="file" id="csvfile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
-<label>또는 엑셀·구글 시트에서 복사해 붙여넣기 (한 줄에 한 명)</label><textarea name="csv" id="csvtext" rows="5" placeholder="a@example.com,홍길동"></textarea>
+<label>또는 엑셀·구글 시트에서 복사해 붙여넣기 (한 줄에 한 명)</label><textarea name="csv" id="csvtext" rows="5" placeholder="a@example.com,홍길동"></textarea>${groupPick}
 <p class="mute" id="csvsum">이메일 열은 자동으로 찾고, 머리글 줄(이메일, 이름)과 쉼표·탭·세미콜론 구분을 모두 인식합니다. <a href="data:text/csv;charset=utf-8,%EF%BB%BFemail,name%0Aa@example.com,%ED%99%8D%EA%B8%B8%EB%8F%99" download="subscribers-sample.csv">샘플 파일</a></p>
 <p class="mute">구독 동의를 받은 사람만 가져오세요. 바로 활성 상태가 됩니다.</p><p><button class="primary" id="csvgo">가져오기</button></p></form></div>
 <script>(function(){var a=document.getElementById('selall');if(a)a.onchange=function(){document.querySelectorAll('.selsub').forEach(function(c){c.checked=a.checked})}})()</script>
@@ -400,26 +402,53 @@ dash.post('/app/n/:nid/subscribers/groups/:gid/delete', async (req, res) => {
   await db.prepare('DELETE FROM subscriber_groups WHERE id=? AND newsletter_id=?').run(req.params.gid, req.nl.id);
   back(res, to, '그룹을 삭제했습니다.');
 });
+// 폼에서 고른 그룹(기존 id 또는 새 이름)을 확인·생성해 돌려준다. 그룹 기능이 없는 플랜이거나 선택하지 않았으면 null, 새 그룹을 못 만들면 { error }
+async function pickGroup(req) {
+  const b = req.body || {};
+  if (!(await ownerLimits(req.nl.owner_id)).groups) return null;
+  const name = String(b.new_group || '').trim().slice(0, 40);
+  if (name) {
+    let g = await db.prepare('SELECT id, name FROM subscriber_groups WHERE newsletter_id=? AND name=?').get(req.nl.id, name);
+    if (g) return g;
+    if ((await db.prepare('SELECT COUNT(*) n FROM subscriber_groups WHERE newsletter_id=?').get(req.nl.id)).n >= 50) return { error: '그룹은 50개까지 만들 수 있습니다.' };
+    await db.prepare('INSERT OR IGNORE INTO subscriber_groups(newsletter_id,name,created_at) VALUES(?,?,?)').run(req.nl.id, name, now());
+    return (await db.prepare('SELECT id, name FROM subscriber_groups WHERE newsletter_id=? AND name=?').get(req.nl.id, name)) || null;
+  }
+  const id = Number(b.group_id) || 0;
+  return id ? (await db.prepare('SELECT id, name FROM subscriber_groups WHERE id=? AND newsletter_id=?').get(id, req.nl.id)) || null : null;
+}
+// 이미 있는 구독자도 그룹에는 넣는다. 새로 들어간 사람 수를 돌려준다
+async function putInGroup(nlId, email, groupId) {
+  const s = await db.prepare('SELECT id FROM subscribers WHERE newsletter_id=? AND email=?').get(nlId, email);
+  return s ? (await db.prepare('INSERT OR IGNORE INTO subscriber_group_members(group_id,subscriber_id) VALUES(?,?)').run(groupId, s.id)).changes : 0;
+}
 dash.post('/app/n/:nid/subscribers/add', async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return back(res, `/app/n/${req.nl.id}/subscribers`, '이메일 형식 오류');
+  const grp = await pickGroup(req);
+  if (grp?.error) return back(res, `/app/n/${req.nl.id}/subscribers`, grp.error);
+  const exists = !!(await db.prepare('SELECT 1 FROM subscribers WHERE newsletter_id=? AND email=?').get(req.nl.id, email));
+  if (exists && grp) return back(res, `/app/n/${req.nl.id}/subscribers?group=${grp.id}`, (await putInGroup(req.nl.id, email, grp.id)) ? `이미 있는 구독자를 '${grp.name}' 그룹에 넣었습니다.` : `이미 '${grp.name}' 그룹에 있는 구독자입니다.`);
   if ((await subscriberRoom(req.nl.owner_id)) <= 0) {
     await notifySubscriberLimit(req.nl.owner_id);
     return back(res, `/app/n/${req.nl.id}/subscribers`, `요금제의 구독자 한도에 도달해 추가할 수 없습니다.${hasUpgrade(await ownerLimits(req.nl.owner_id)) ? ' 상위 요금제로 올리면 더 받을 수 있어요.' : ''}`);
   }
-  back(res, `/app/n/${req.nl.id}/subscribers`, await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin') ? '추가했습니다.' : '이미 있는 이메일입니다.');
+  const ok = await addSub(req.nl.id, email, String(req.body.name || '').slice(0, 80), 'admin');
+  if (ok && grp) await putInGroup(req.nl.id, email, grp.id);
+  back(res, `/app/n/${req.nl.id}/subscribers${grp ? `?group=${grp.id}` : ''}`, ok ? (grp ? `추가했습니다. ('${grp.name}' 그룹)` : '추가했습니다.') : '이미 있는 이메일입니다.');
 });
 dash.post('/app/n/:nid/subscribers/import', async (req, res) => {
   const { rows, invalid, dup } = parseSubscribers(req.body.csv);
-  let added = 0, over = 0, room = await subscriberRoom(req.nl.owner_id);
+  const grp = await pickGroup(req);
+  if (grp?.error) return back(res, `/app/n/${req.nl.id}/subscribers`, grp.error);
+  let added = 0, over = 0, grouped = 0, room = await subscriberRoom(req.nl.owner_id);
   for (const r of rows) {
-    if (room <= 0) { over++; continue; }
-    const a = await addSub(req.nl.id, r.email, r.name, 'import');
-    added += a; room -= a;
+    if (room > 0) { const a = await addSub(req.nl.id, r.email, r.name, 'import'); added += a; room -= a; } else over++;
+    if (grp) grouped += await putInGroup(req.nl.id, r.email, grp.id); // 이미 있던 구독자도 그룹에 넣는다. 한도 초과로 못 들어온 사람은 구독자가 없어 건너뛴다
   }
   if (over) await notifySubscriberLimit(req.nl.owner_id);
   const skip = [over && `구독자 한도 초과 ${over}명${hasUpgrade(await ownerLimits(req.nl.owner_id)) ? ' (상위 요금제로 올리면 더 받을 수 있어요)' : ''}`, rows.length - added - over && `이미 있는 ${rows.length - added - over}명`, dup && `파일 안 중복 ${dup}명`, invalid && `이메일이 없는 ${invalid}줄`].filter(Boolean);
-  back(res, `/app/n/${req.nl.id}/subscribers`, `${added}명을 가져왔습니다.${skip.length ? ` (건너뜀: ${skip.join(', ')})` : ''}`);
+  back(res, `/app/n/${req.nl.id}/subscribers${grp ? `?group=${grp.id}` : ''}`, `${added}명을 가져왔습니다.${grp ? ` '${grp.name}' 그룹에 ${grouped}명을 넣었습니다.` : ''}${skip.length ? ` (건너뜀: ${skip.join(', ')})` : ''}`);
 });
 // 결제 없이 유료 혜택 지정/해제 (후원자·지인 등). 결제 중인 구독자는 해제하지 않는다
 dash.post('/app/n/:nid/subscribers/:id/tier', async (req, res) => {
