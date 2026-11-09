@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import { db, baseUrl, isPaid, hasPaid, publicUrl } from './db.js';
 import { tr } from './i18n.js';
+import { ownerLimits } from './plan-limits.js';
 
 export const h = (s = '') =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -63,6 +64,12 @@ function gate(md, post, canRead) {
 }
 export const isGated = (post) => post.audience === 'paid' || post.body_md.includes(MARK);
 
+// 무료 플랜의 글·메일 하단에 붙는 lett. 로고 (브랜딩 제거는 Pro 이상). 메일 앱은 CSS·웹폰트가 제한적이라 인라인 스타일만 쓴다
+const brandBadge = (base, t) => {
+  const logo = `<a href="${base}" style="text-decoration:none;font-family:'Poppins','Plus Jakarta Sans','Pretendard',-apple-system,'Segoe UI',sans-serif;font-weight:800;font-size:18px;letter-spacing:-.06em;color:#0F172A">lett<span style="color:#3B82F6">.</span></a>`;
+  return `<p style="margin:28px 0 0;text-align:center;font-size:13px;color:#999">${t('{a}로 만든 뉴스레터', { a: logo })}</p>`;
+};
+
 export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '', canRead = false, lang = 'ko' } = {}) {
   const base = baseUrl();
   const t = tr(mode === 'web' ? lang : 'ko'); // 웹 글 페이지만 방문자 언어로, 메일은 한국어
@@ -104,6 +111,7 @@ export async function renderPost(post, nl, { mode = 'web', sub = null, tok = '',
     : `<hr style="border:none;border-top:1px solid #eee;margin:28px 0 16px">
 <div style="font-size:13px;color:#888"><p>${h(nl.name)}의 구독자이기 때문에 받은 메일입니다.<br>
 ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게 추천하기</a> · ` : ''}${sub?.token && hasPaid(nl) && !isPaid(sub) ? `<a href="${upgrade}" style="color:#888">유료 구독</a> · ` : ''}<a href="${unsub}" style="color:#888">구독 해지</a></p></div>`;
+  const brand = (await ownerLimits(nl.owner_id)).branding ? '' : brandBadge(base, t);
   const pixel = mode === 'email' ? `<img src="${base}/t/o/${tok}" width="1" height="1" alt="" style="display:none">` : '';
   const og = mode === 'web' && post.id ? `<title>${h(post.subject)} — ${h(nl.name)}</title><meta property="og:type" content="article"><meta property="og:title" content="${h(post.subject)}">
 <meta property="og:description" content="${h(post.preview || nl.description)}"><meta property="og:url" content="${pageUrl}">${post.thumb ? `<meta property="og:image" content="${post.thumb.startsWith('/') ? base : ''}${h(post.thumb)}">` : nl.logo ? `<meta property="og:image" content="${base}${h(nl.logo)}">` : ''}<meta name="twitter:card" content="${post.thumb ? 'summary_large_image' : 'summary'}">` : '';
@@ -113,7 +121,7 @@ ${sub?.token ? `<a href="${base}/r/${sub.token}" style="color:#888">친구에게
 <body style="margin:0;background:#fff;font-family:-apple-system,'Inter','Pretendard','Segoe UI','Malgun Gothic',sans-serif;color:#111;line-height:1.75">
 <span style="display:none;max-height:0;overflow:hidden;opacity:0">${h(personalize(post.preview, mode === 'web' ? null : sub, { html: false }))}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%"><tr><td align="center" style="padding:40px 24px">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px"><tr><td align="left" style="font-size:16px;word-break:break-word">${top}${hero}${body}${foot}${pixel}</td></tr></table>
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px"><tr><td align="left" style="font-size:16px;word-break:break-word">${top}${hero}${body}${foot}${brand}${pixel}</td></tr></table>
 </td></tr></table></body></html>`;
 }
 
